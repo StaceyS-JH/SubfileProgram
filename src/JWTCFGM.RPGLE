@@ -40,6 +40,11 @@ dcl-ds dspf_info qualified;
   pressedKey char(1) pos(369);
 end-ds;
 
+// Program status DS provides the current call-stack entry name.
+dcl-ds Psds psds qualified;
+  PgmName char(10) pos(1);
+end-ds;
+
 //--------------------------------------------------------------
 // 5250 key constants
 //--------------------------------------------------------------
@@ -119,7 +124,6 @@ dcl-ds Ind;
   ViewMode     ind pos(92);   // *IN92 – protect detail fields (view)
   SflMore      ind pos(93);   // *IN93 – SFLEND(*MORE) on list subfile
   MsgMore      ind pos(94);   // *IN94 – SFLEND(*MORE) on message subfile
-  MsgSflDsp    ind pos(95);   // *IN95 – SFLDSP: suppress row 24 when no messages
 end-ds;
 
 //--------------------------------------------------------------
@@ -209,6 +213,7 @@ end-pr;
 
 dcl-pr SetError;
   Msg varchar(78) const;
+  TargetProc char(10) const options(*nopass);
 end-pr;
 
 dcl-pr ProcessSelections;
@@ -504,13 +509,12 @@ dcl-proc ShowDetail;
   MsgRrn = 0;
   PGMQ = '*';
   MsgMore = *on;
+  ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
 
   dow *on;
-    MsgSflDsp = (MsgCount > 0);       // only show row 24 when messages exist
     write JWTMSGCTL;                  // Display message subfile control before detail format
     exfmt JWTDTL;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);  // clear after read
-    MsgCount = 0;
 
     if dspf_info.pressedKey = KEY_F12;
       leave;
@@ -544,7 +548,7 @@ dcl-proc ShowDetail;
       MsgCount = 0;
       MsgMore = *on;
       if not ValidateDetail();
-        // SFLEND(*MORE): ON = Bottom, OFF = More...
+        // Message subfile: ON = Bottom, OFF = More...
         MsgMore = (MsgCount <= 1);
         iter;
       endif;
@@ -565,7 +569,6 @@ dcl-proc ShowDetail;
   // Clear detail-message overlay remnants and restore list footer.
   MsgRrn = 0;
   MsgMore = *on;
-  MsgSflDsp = *off;                   // no messages at exit – suppress row 24
   write JWTMSGCTL;
   write JWTFOOT;
 
@@ -783,15 +786,32 @@ end-proc DetailToRow;
 //==============================================================
 // Procedure: SetError
 // Sends an error message to the program message queue.
+// Parameters:
+//   Msg        - Error message text (max 78 chars)
+//   TargetProc - Optional procedure name that does the exfmt
+//                (defaults to 'SHOWDETAIL' for backward compat)
+// The message must target the procedure that issues the exfmt
+// I/O operation, as the display file reads messages from that
+// procedure's queue via SFLPGMQ.
 //==============================================================
 dcl-proc SetError;
 
   dcl-pi *n;
     Msg varchar(78) const;
+    TargetProc char(10) const options(*nopass);
   end-pi;
 
+  dcl-s ProcName char(10);
+
+  // Default to ShowDetail if not specified
+  if %passed(TargetProc);
+    ProcName = TargetProc;
+  else;
+    ProcName = 'SHOWDETAIL';
+  endif;
+
   MsgCount += 1;
-  snd-msg %trim(Msg) %target(*caller);
+  snd-msg %trim(Msg) %target(ProcName);
 
 end-proc SetError;
 

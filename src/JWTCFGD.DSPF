@@ -268,7 +268,7 @@
      A* Record: JWTMSGCTL – Message subfile control (detail screen)
      A*--------------------------------------------------------------
      A          R JWTMSGCTL                 SFLCTL(JWTMSGSFL)
-     A  95                                  SFLDSP
+     A                                      SFLDSP
      A                                      SFLDSPCTL
      A                                      SFLINZ
      A  94                                  SFLEND(*MORE)

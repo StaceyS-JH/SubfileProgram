@@ -45,7 +45,6 @@ dcl-c ATTR_RED_RI   x'29';
 //--------------------------------------------------------------
 dcl-ds Ind;
   MsgMore    ind pos(94);   // *IN94 – SFLEND(*MORE) on message subfile
-  MsgSflDsp  ind pos(95);   // *IN95 – SFLDSP: suppress row 24 when no messages
 end-ds;
 
 //--------------------------------------------------------------
@@ -84,6 +83,7 @@ end-pr;
 
 dcl-pr SetError;
   Msg varchar(78) const;
+  TargetProc char(10) const options(*nopass);
 end-pr;
 
 dcl-pr ValidateInput ind;
@@ -134,7 +134,6 @@ dcl-proc Main;
 
   dow not Done and not Created;
 
-    MsgSflDsp = (MsgCount > 0);       // only show row 24 when messages exist
     write CRTMSGCTL;
     exfmt CRTKSSCR;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
@@ -211,7 +210,6 @@ dcl-proc Main;
   if Created;
     MsgRrn = 0;
     MsgMore = *on;
-    MsgSflDsp = (MsgCount > 0);       // only show row 24 when messages exist
     write CRTMSGCTL;
     exfmt CRTKSSCR;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
@@ -225,14 +223,35 @@ end-proc Main;
 // Procedure: SetError
 // Sends a message to the program message queue.
 //==============================================================
+//==============================================================
+// Procedure: SetError
+// Sends an error message to the program message queue.
+// Parameters:
+//   Msg        - Error message text (max 78 chars)
+//   TargetProc - Optional procedure name that does the exfmt
+//                (defaults to 'MAIN' for CRTKSD)
+// The message must target the procedure that issues the exfmt
+// I/O operation, as the display file reads messages from that
+// procedure's queue via SFLPGMQ.
+//==============================================================
 dcl-proc SetError;
 
   dcl-pi *n;
     Msg varchar(78) const;
+    TargetProc char(10) const options(*nopass);
   end-pi;
 
+  dcl-s ProcName char(10);
+
+  // Default to Main if not specified
+  if %passed(TargetProc);
+    ProcName = TargetProc;
+  else;
+    ProcName = 'MAIN';
+  endif;
+
   MsgCount += 1;
-  snd-msg %trim(Msg) %target(*caller);
+  snd-msg %trim(Msg) %target(ProcName);
 
 end-proc SetError;
 

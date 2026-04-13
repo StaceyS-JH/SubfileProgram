@@ -151,8 +151,8 @@
      A* Record: KSRMSGCTL – Message subfile control
      A*--------------------------------------------------------------
      A          R KSRMSGCTL                 SFLCTL(KSRMSGSFL)
-     A  95                                  SFLDSP
-     A  95                                  SFLDSPCTL
+     A                                      SFLDSP
+     A                                      SFLDSPCTL
      A                                      SFLINZ
      A  94                                  SFLEND(*MORE)
      A                                      SFLSIZ(10) SFLPAG(1)

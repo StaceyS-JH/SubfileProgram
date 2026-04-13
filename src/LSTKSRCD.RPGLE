@@ -53,7 +53,6 @@ dcl-ds Ind;
   SflEmpty    ind pos(91);   // *IN91 – suppresses SFLDSP when no records
   SflMore     ind pos(92);   // *IN92 – SFLEND(*MORE): more records below
   MsgMore     ind pos(94);   // *IN94 – SFLEND(*MORE) on message subfile
-  MsgShow     ind pos(95);   // *IN95 – shows list message subfile control
 end-ds;
 
 //--------------------------------------------------------------
@@ -189,6 +188,7 @@ end-pr;
 
 dcl-pr SetError;
   Msg varchar(78) const;
+  TargetProc char(10) const options(*nopass);
 end-pr;
 
 //==============================================================
@@ -224,7 +224,6 @@ dcl-proc Main;
   MsgRrn  = 0;
   // SFLEND(*MORE): ON = Bottom, OFF = More...
   MsgMore = *on;
-  MsgShow = *off;
   PGMQ    = '*';
 
   // ------------------------------------------------------------------
@@ -235,14 +234,12 @@ dcl-proc Main;
 
   dow not Done;
     write KSRFOOT;
-    MsgShow = (MsgCount > 0);
     MsgMore = (MsgCount <= 1);
     write KSRMSGCTL;
     exfmt KSRCTL;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
     MsgCount = 0;
     MsgMore  = *on;
-    MsgShow  = *off;
     FilterType = %upper(%trim(KSTYPFLT));  // capture filter after each EXFMT
 
     select;
@@ -584,14 +581,35 @@ end-proc ProcessSelections;
 // Procedure: SetError
 // Sends a message to the program message queue.
 //==============================================================
+//==============================================================
+// Procedure: SetError
+// Sends an error message to the program message queue.
+// Parameters:
+//   Msg        - Error message text (max 78 chars)
+//   TargetProc - Optional procedure name that does the exfmt
+//                (defaults to 'MAIN' for LSTKSRCD)
+// The message must target the procedure that issues the exfmt
+// I/O operation, as the display file reads messages from that
+// procedure's queue via SFLPGMQ.
+//==============================================================
 dcl-proc SetError;
 
   dcl-pi *n;
     Msg varchar(78) const;
+    TargetProc char(10) const options(*nopass);
   end-pi;
 
+  dcl-s ProcName char(10);
+
+  // Default to Main if not specified
+  if %passed(TargetProc);
+    ProcName = TargetProc;
+  else;
+    ProcName = 'MAIN';
+  endif;
+
   MsgCount += 1;
-  snd-msg %trim(Msg) %target(*caller);
+  snd-msg %trim(Msg) %target(ProcName);
 
 end-proc SetError;
 

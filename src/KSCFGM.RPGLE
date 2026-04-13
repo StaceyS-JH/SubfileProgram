@@ -47,7 +47,6 @@ dcl-ds Ind;
   ViewMode     ind pos(92);
   SflMore      ind pos(93);   // *IN93 – SFLEND(*MORE) on list subfile
   MsgMore      ind pos(94);   // *IN94 – SFLEND(*MORE) on message subfile
-  MsgSflDsp    ind pos(95);   // *IN95 – SFLDSP: suppress row 24 when no messages
 end-ds;
 
 //--------------------------------------------------------------
@@ -151,6 +150,7 @@ end-pr;
 
 dcl-pr SetError;
   Msg varchar(78) const;
+  TargetProc char(10) const options(*nopass);
 end-pr;
 
 exec sql
@@ -373,14 +373,14 @@ dcl-proc ShowDetail;
   RowToDetail();
   ResetErrorAttrs();
   MsgRrn = 0;
+  PGMQ = 'KSCFGM';
   MsgMore = *on;
+  ClrPgmMsg(PGMQ : 0 : '    ' : '*ALL      ' : MsgApiErr);
 
   dow *on;
-    MsgSflDsp = (MsgCount > 0);       // only show row 24 when messages exist
     write KSFMSGCTL;
     exfmt KSFDTL;
-    ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
-    MsgCount = 0;
+    ClrPgmMsg(PGMQ : 0 : '    ' : '*ALL      ' : MsgApiErr);
 
     if dspf_info.pressedKey = KEY_F12;
       leave;
@@ -410,7 +410,6 @@ dcl-proc ShowDetail;
   // Clear detail-message overlay remnants and restore list footer.
   MsgRrn = 0;
   MsgMore = *on;
-  MsgSflDsp = *off;                   // no messages at exit – suppress row 24
   write KSFMSGCTL;
   write KSFFOOT;
 
@@ -587,14 +586,35 @@ end-proc DetailToRow;
 //==============================================================
 // SetError
 //==============================================================
+//==============================================================
+// Procedure: SetError
+// Sends an error message to the program message queue.
+// Parameters:
+//   Msg        - Error message text (max 78 chars)
+//   TargetProc - Optional procedure name that does the exfmt
+//                (defaults to 'SHOWDETAIL' for KSCFGM)
+// The message must target the procedure that issues the exfmt
+// I/O operation, as the display file reads messages from that
+// procedure's queue via SFLPGMQ.
+//==============================================================
 dcl-proc SetError;
 
   dcl-pi *n;
     Msg varchar(78) const;
+    TargetProc char(10) const options(*nopass);
   end-pi;
 
+  dcl-s ProcName char(10);
+
+  // Default to ShowDetail if not specified
+  if %passed(TargetProc);
+    ProcName = TargetProc;
+  else;
+    ProcName = 'SHOWDETAIL';
+  endif;
+
   MsgCount += 1;
-  snd-msg %trim(Msg) %target(*caller);
+  snd-msg %trim(Msg) %target(ProcName);
 
 end-proc SetError;
 

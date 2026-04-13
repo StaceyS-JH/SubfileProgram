@@ -135,7 +135,7 @@
      A* Record: CRTMSGCTL – Message subfile control (detail/input)
      A*--------------------------------------------------------------
      A          R CRTMSGCTL                 SFLCTL(CRTMSGSFL)
-     A  95                                  SFLDSP
+     A                                      SFLDSP
      A                                      SFLDSPCTL
      A                                      SFLINZ
      A  94                                  SFLEND(*MORE)
