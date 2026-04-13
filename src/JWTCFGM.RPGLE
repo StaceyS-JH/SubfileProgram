@@ -510,6 +510,7 @@ dcl-proc ShowDetail;
     write JWTMSGCTL;                  // Display message subfile control before detail format
     exfmt JWTDTL;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);  // clear after read
+    MsgCount = 0;
 
     if dspf_info.pressedKey = KEY_F12;
       leave;
@@ -790,7 +791,7 @@ dcl-proc SetError;
   end-pi;
 
   MsgCount += 1;
-  snd-msg %trim(Msg);
+  snd-msg %trim(Msg) %target(*caller);
 
 end-proc SetError;
 

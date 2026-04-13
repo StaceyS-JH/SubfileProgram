@@ -380,6 +380,7 @@ dcl-proc ShowDetail;
     write KSFMSGCTL;
     exfmt KSFDTL;
     ClrPgmMsg('*' : 0 : '    ' : '*ALL      ' : MsgApiErr);
+    MsgCount = 0;
 
     if dspf_info.pressedKey = KEY_F12;
       leave;
