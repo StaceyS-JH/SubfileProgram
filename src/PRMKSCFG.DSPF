@@ -1,0 +1,109 @@
+     A*==============================================================
+     A* Display File:  PRMKSCFG
+     A* Description:   Keystore Config Selection prompt.
+     A*                Lists rows from KSCFG and returns selected
+     A*                KSFILE/KSLIB to caller.
+     A*==============================================================
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      PRINT
+     A                                      INDARA
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KCFGSFLD - Subfile row
+     A*--------------------------------------------------------------
+     A          R KCFGSFLD                  SFL
+     A            SFLRRN         5S 0H
+     A            SFLOPT         1A  B  8  2VALUES(' ' '1')
+     A                                      COLOR(GRN)
+     A            SFLFILE       10A  O  8  6COLOR(GRN)
+     A            SFLLIB        10A  O  8 18COLOR(GRN)
+     A            SFLACT         1A  O  8 30COLOR(GRN)
+     A            SFLFUNC       10A  O  8 34COLOR(GRN)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KCFGCTL - Subfile control
+     A*--------------------------------------------------------------
+     A          R KCFGCTL                   SFLCTL(KCFGSFLD)
+     A                                      SFLSIZ(9999)
+     A                                      SFLPAG(13)
+     A N90N91                               SFLDSP
+     A                                      SFLDSPCTL
+     A  90                                  SFLCLR
+     A  93                                  SFLEND(*MORE)
+     A                                      CF03(03 'Exit')
+     A                                      CF12(12 'Previous')
+     A                                      ROLLUP(25)
+     A                                      ROLLDOWN(26)
+     A                                      OVERLAY
+     A*
+     A                                  1  2'PRMKSCFG'
+     A                                      DSPATR(HI)
+     A                                      COLOR(WHT)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A                                  2 48'Select Keystore File / Library'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A            KCFGCOUNT      5S 0O  3  2
+     A                                  3  8'record(s)'
+     A                                      COLOR(GRN)
+     A                                  4  2'Type 1 and press Enter'
+     A                                      COLOR(BLU)
+     A                                  4 26'(Active=Y shown first)'
+     A                                      COLOR(BLU)
+     A                                  6  2'Opt'
+     A                                      COLOR(WHT)
+     A                                      DSPATR(HI)
+     A                                  6  6'KS File'
+     A                                      COLOR(WHT)
+     A                                      DSPATR(HI)
+     A                                  6 18'Library'
+     A                                      COLOR(WHT)
+     A                                      DSPATR(HI)
+     A                                  6 30'A'
+     A                                      COLOR(WHT)
+     A                                      DSPATR(HI)
+     A                                  6 34'Function'
+     A                                      COLOR(WHT)
+     A                                      DSPATR(HI)
+     A                                  7  2'---'
+     A                                      COLOR(WHT)
+     A                                  7  6'----------'
+     A                                      COLOR(WHT)
+     A                                  7 18'----------'
+     A                                      COLOR(WHT)
+     A                                  7 30'-'
+     A                                      COLOR(WHT)
+     A                                  7 34'----------'
+     A                                      COLOR(WHT)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KCFGMPTY - No records overlay
+     A*--------------------------------------------------------------
+     A          R KCFGMPTY
+     A                                      OVERLAY
+     A                                  8  4'No KSCFG records found.'
+     A                                      COLOR(YLW)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KCFGERR - Error message bar (row 24)
+     A*--------------------------------------------------------------
+     A          R KCFGERR
+     A                                      OVERLAY
+     A            KERRMSG       78A  O 24  2COLOR(RED)
+     A                                      DSPATR(HI)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KCFGFOOT - Footer
+     A*--------------------------------------------------------------
+     A          R KCFGFOOT
+     A                                      OVERLAY
+     A                                 24  2'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 24 11'F12=Previous'
+     A                                      COLOR(BLU)

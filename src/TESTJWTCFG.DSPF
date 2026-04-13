@@ -1,0 +1,154 @@
+     A*==============================================================
+     A* Display File:  TESTJWTCFG
+     A* Description:   Test maintenance display for JWTCFG.
+     A*                Uses a load-all subfile list and a minimal
+     A*                Add panel (F6) to insert rows into JWTCFG.
+     A*==============================================================
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      PRINT
+     A                                      INDARA
+     A*
+     A*--------------------------------------------------------------
+     A* Record: TJSFLD - Subfile row
+     A*--------------------------------------------------------------
+     A          R TJSFLD                    SFL
+     A            SFLRRN         5S 0H
+     A            SFLJWTID       5S 0O  9  4COLOR(GRN)
+     A            SFLISS        36A  O  9 12COLOR(GRN)
+     A            SFLSUB        36A  O  9 49COLOR(GRN)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: TJCTL - Subfile control
+     A*--------------------------------------------------------------
+     A          R TJCTL                     SFLCTL(TJSFLD)
+     A                                      SFLSIZ(9999)
+     A                                      SFLPAG(13)
+     A N90N91                               SFLDSP
+     A                                      SFLDSPCTL
+     A  90                                  SFLCLR
+     A  92                                  SFLEND(*MORE)
+     A                                      CF03(03 'Exit')
+     A                                      CF05(05 'Refresh')
+     A                                      CF06(06 'Add')
+     A                                      CF12(12 'Previous')
+     A                                      ROLLUP(25)
+     A                                      ROLLDOWN(26)
+     A                                      OVERLAY
+     A                                  1  2'TESTJWTCFG'
+     A                                      DSPATR(HI)
+     A                                      COLOR(WHT)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A                                  2 48'JWT Config Test (JWTCFG SQL)'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A            JWTCOUNT       5S 0O  3  2
+     A                                  3  8'record(s)'
+     A                                      COLOR(GRN)
+     A                                  5  2'F6=Add new JWTCFG row'
+     A                                      COLOR(BLU)
+     A                                  7  4'ID'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  7 12'Issuer'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  7 49'Subject'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8  4'-----'
+     A                                      COLOR(WHT)
+     A                                  8 12'------------------------------'
+     A                                      COLOR(WHT)
+     A                                  8 49'------------------------------'
+     A                                      COLOR(WHT)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: TJFOOT - Footer
+     A*--------------------------------------------------------------
+     A          R TJFOOT
+     A                                      OVERLAY
+     A                                 23  2'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 23 12'F5=Refresh'
+     A                                      COLOR(BLU)
+     A                                 23 25'F6=Add'
+     A                                      COLOR(BLU)
+     A                                 23 34'F12=Previous'
+     A                                      COLOR(BLU)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: TJMPTY - Empty list message
+     A*--------------------------------------------------------------
+     A          R TJMPTY
+     A                                      OVERLAY
+     A                                  9  4'No JWT config records found.'
+     A                                      COLOR(YLW)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: TJDTL - Add panel (from JWT detail layout)
+     A*--------------------------------------------------------------
+     A          R TJDTL
+     A                                      CF10(10 'Save')
+     A                                      CF12(12 'Cancel')
+     A                                      OVERLAY
+     A                                  1  2'TESTJWTCFG'
+     A                                      DSPATR(HI)
+     A                                      COLOR(WHT)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A                                  2 50'Add JWT Configuration'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A                                  3 64'Add'
+     A                                      DSPATR(HI)
+     A                                  5  2'Issuer'
+     A                                      COLOR(BLU)
+     A            DISSUER      100A  B  5 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                  6  2'Subject'
+     A                                      COLOR(BLU)
+     A            DISUBJECT    100A  B  6 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                  7  2'Audience'
+     A                                      COLOR(BLU)
+     A            DIAUDINC     100A  B  7 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                  8  2'Expiry (s)'
+     A                                      COLOR(BLU)
+     A            DIEXPIRY       7S 0B  8 14DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                  9  2'KS File'
+     A                                      COLOR(BLU)
+     A            DIKSFILE      10A  B  9 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                  9 24'Library'
+     A                                      COLOR(BLU)
+     A            DIKSLIB       10A  B  9 32DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                 10  2'Key Label'
+     A                                      COLOR(BLU)
+     A            DIKSLBL       32A  B 10 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                 11  2'JWT Alg'
+     A                                      COLOR(BLU)
+     A            DIALG         10A  B 11 12DSPATR(UL)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A                                 24  2'F10=Save'
+     A                                      COLOR(BLU)
+     A                                 24 13'F12=Cancel'
+     A                                      COLOR(BLU)

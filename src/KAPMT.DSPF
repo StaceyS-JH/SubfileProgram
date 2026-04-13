@@ -1,0 +1,123 @@
+      *================================================================
+      * Display File: KAPMT
+      * Description:  Key algorithm selection prompt.
+      *               Displays a load-all subfile of all key algorithms
+      *               supported by the GENKEY program.  The user types
+      *               '1' next to the desired algorithm and presses
+      *               Enter to return the KeyAlg value to the caller.
+      *
+      * Records:
+      *   KAPSFLD  – subfile (one row per key algorithm)
+      *   KAPCTL   – subfile control / screen body
+      *   KAPFOOT  – static page footer
+      *   KAPERR   – error message overlay (row 24)
+      *
+      * Function keys:
+      *   F3  – Exit (return without a selection)
+      *   F12 – Previous (same as F3)
+      *
+      * Return:
+      *   Parm 1 (10A) – the selected KeyAlg value (e.g. RSA2048,
+      *                  ECC_P256), or inbound value if F3/F12 is pressed.
+      *================================================================
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      INDARA
+     A*
+     A*----------------------------------------------------------------
+     A* Record: KAPSFLD – subfile record
+     A*   One line per key algorithm.
+     A*   Columns (132-wide layout):
+     A*    2      Opt        (1A input)
+     A*    6-15   KeyAlg     (10A output)
+     A*   17-36   Key Family (20A output)
+     A*   38-82   Description(45A output)
+     A*   84-96   JWT Alg(s) (13A output)
+     A*   98-101  Bits       ( 4S 0 output)
+     A*----------------------------------------------------------------
+     A          R KAPSFLD                   SFL
+     A            KOPT           1A  B 10  2VALUES(' ' '1')
+     A                                      COLOR(GRN)
+     A            KKEYALG       10A  O 10  6COLOR(GRN)
+     A            KFAMILY       20A  O 10 17COLOR(GRN)
+     A            KDESC         45A  O 10 38COLOR(GRN)
+     A            KJWTS         13A  O 10 84COLOR(GRN)
+     A            KKEYBITS       4S 0O 10 98
+     A*
+     A*----------------------------------------------------------------
+     A* Record: KAPCTL – subfile control
+     A*----------------------------------------------------------------
+     A          R KAPCTL                    SFLCTL(KAPSFLD)
+     A                                      CF03(03 'Exit')
+     A                                      CF12(12 'Previous')
+     A                                      SFLSIZ(0050)
+     A                                      SFLPAG(0013)
+     A N90                                  SFLDSP
+     A                                      SFLDSPCTL
+     A  90                                  SFLCLR
+     A  92                                  SFLEND(*MORE)
+     A                                      OVERLAY
+     A            KSFLRRN        5S 0H
+     A*
+     A*  Row 1 – program name, subsystem, date
+     A                                  1  2'KAPMT'
+     A                                      DSPATR(HI)
+     A                                      COLOR(WHT)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A*  Row 2 – screen title, time
+     A                                  2 57'Select Key Algorithm'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A*  Row 4 – legend
+     A                                  4  2'Type 1 and press Enter'
+     A                                      COLOR(BLU)
+     A*
+     A*  Row 8 – column headings
+     A                                  8  2'Opt'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8  6'Key Alg'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 17'Key Family'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 38'Description'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 84'JWT Alg(s)'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 98'Bits'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  9  2'---'
+     A                                      COLOR(WHT)
+     A                                  9  6'----------'
+     A                                      COLOR(WHT)
+     A                                  9 17'--------------------'
+     A                                      COLOR(WHT)
+     A                                  9 38'-----------------------------------
+     A                                      -----------'
+     A                                      COLOR(WHT)
+     A                                  9 84'-------------'
+     A                                      COLOR(WHT)
+     A                                  9 98'----'
+     A                                      COLOR(WHT)
+     A*
+     A*----------------------------------------------------------------
+     A* Record: KAPFOOT – page footer (row 24)
+     A*----------------------------------------------------------------
+     A          R KAPFOOT
+     A                                      OVERLAY
+     A                                 24  2'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 24 11'F12=Previous'
+     A                                      COLOR(BLU)
+     A*
+     A*----------------------------------------------------------------
+     A* Record: KAPERR – error message (row 24, overrides KAPFOOT)
+     A*----------------------------------------------------------------
+     A          R KAPERR
+     A                                      OVERLAY
+     A            KERRMSG       78A  O 24  2COLOR(RED)
+     A                                      DSPATR(HI)

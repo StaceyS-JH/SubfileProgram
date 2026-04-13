@@ -1,0 +1,223 @@
+     A*==============================================================
+     A* Display File:  KSCFGD
+     A* Description:   KSCFG maintenance (list + CRUD + activate +
+     A*                work-with-keys call).
+     A*==============================================================
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      PRINT
+     A                                      INDARA
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFSFLD – Subfile row
+     A*--------------------------------------------------------------
+     A          R KSFSFLD                   SFL
+     A            SFLRRN         5S 0H
+     A            SFLID          5S 0H
+     A            SFLOPT         1A  B  8  2VALUES(' ' '2' '4' '5' 'A' '9')
+     A                                      CHECK(LC)
+     A                                      COLOR(GRN)
+     A            SFLFILE       10A  O  8  6COLOR(GRN)
+     A            SFLLIB        10A  O  8 18COLOR(GRN)
+     A            SFLACT         1A  O  8 30COLOR(GRN)
+     A            SFLFUNC       10A  O  8 34COLOR(GRN)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFCTL – Subfile control
+     A*--------------------------------------------------------------
+     A          R KSFCTL                    SFLCTL(KSFSFLD)
+     A                                      SFLSIZ(9999)
+     A                                      SFLPAG(13)
+     A N90N91                               SFLDSP
+     A                                      SFLDSPCTL
+     A  90                                  SFLCLR
+     A  93                                  SFLEND(*MORE)
+     A                                      CF03
+     A                                      CF05
+     A                                      CF06
+     A                                      CF12
+     A                                      ROLLUP(25)
+     A                                      ROLLDOWN(26)
+     A                                      OVERLAY
+     A*
+     A                                  1  2'KSCFGM'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A                                  2 50'Keystore Configuration Maintenance'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A            KSFCOUNT       5S 0O  3  2
+     A                                  3  8'record(s)'
+     A                                      COLOR(GRN)
+     A                                  4  2'2=Change  4=Delete  5=View  -
+     A                                      A=Make Active  9=Work Keys'
+     A                                      COLOR(BLU)
+     A                                  6  2'Opt'
+     A                                      COLOR(WHT)
+     A                                  6  6'KS File'
+     A                                      COLOR(WHT)
+     A                                  6 18'Library'
+     A                                      COLOR(WHT)
+     A                                  6 30'A'
+     A                                      COLOR(WHT)
+     A                                  6 34'Function'
+     A                                      COLOR(WHT)
+     A                                  7  2'---'
+     A                                      COLOR(WHT)
+     A                                  7  6'----------'
+     A                                      COLOR(WHT)
+     A                                  7 18'----------'
+     A                                      COLOR(WHT)
+     A                                  7 30'-'
+     A                                      COLOR(WHT)
+     A                                  7 34'----------'
+     A                                      COLOR(WHT)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFDTL – Detail panel (change/view)
+     A*--------------------------------------------------------------
+     A          R KSFDTL
+     A                                      CF10
+     A                                      CF12
+     A                                      RTNCSRLOC(&RCD &FLD &POS)
+     A                                      CSRLOC(CSRROW CSRCOL)
+     A                                      OVERLAY
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A            POS            4S 0H
+     A            CSRROW         3S 0H
+     A            CSRCOL         3S 0H
+     A            ATTRFILE       1A  P
+     A            ATTRLIB        1A  P
+     A            ATTRACT        1A  P
+     A            ATTRFUNC       1A  P
+     A            DTLMODE        6A  O  3 64DSPATR(HI)
+     A                                  1  2'KSCFGM'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  1 57'BSL Subsystem OAUTH'
+     A                                      COLOR(YLW)
+     A                                  1124DATE
+     A                                      EDTCDE(Y)
+     A                                      COLOR(GRN)
+     A                                  2 50'Keystore Configuration Detail'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A                                  2124TIME
+     A                                      COLOR(GRN)
+     A                                  5  2'KSCFG ID'
+     A                                      COLOR(GRN)
+     A            DKSID          5S 0O  5 12
+     A                                  6  2'KS File'
+     A                                      COLOR(BLU)
+     A            DKSFILE       10A  B  6 12DSPATR(UL)
+     A                                      DSPATR(&ATTRFILE)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A  92                                  DSPATR(PR)
+     A                                  7  2'Library'
+     A                                      COLOR(BLU)
+     A            DKSLIB        10A  B  7 12DSPATR(UL)
+     A                                      DSPATR(&ATTRLIB)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A  92                                  DSPATR(PR)
+     A                                  8  2'Active (Y/N)'
+     A                                      COLOR(BLU)
+     A            DKSACT         1A  B  8 15DSPATR(UL)
+     A                                      DSPATR(&ATTRACT)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A  92                                  DSPATR(PR)
+     A                                  9  2'Function'
+     A                                      COLOR(BLU)
+     A            DKSFUNC       10A  B  9 12DSPATR(UL)
+     A                                      DSPATR(&ATTRFUNC)
+     A                                      COLOR(GRN)
+     A                                      CHECK(LC)
+     A  92                                  DSPATR(PR)
+     A                                 15  2'Created'
+     A                                      COLOR(GRN)
+     A            DKSCRTS       26A  O 15 12
+     A                                 16  2'Changed'
+     A                                      COLOR(GRN)
+     A            DKSCHTS       26A  O 16 12
+     A N92                             23  2'F10=Save'
+     A                                      COLOR(BLU)
+     A                                 23 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFDEL – Delete confirmation
+     A*--------------------------------------------------------------
+     A          R KSFDEL
+     A                                      CF10
+     A                                      CF12
+     A                                      OVERLAY
+     A                                 13  2'Delete KSCFG row?'
+     A                                      DSPATR(HI)
+     A                                      COLOR(RED)
+     A                                 14  4'ID      :'
+     A                                      COLOR(GRN)
+     A            DELID          5S 0O 14 14
+     A                                 15  4'KS File :'
+     A                                      COLOR(GRN)
+     A            DELFILE       10A  O 15 14
+     A                                 16  4'Library :'
+     A                                      COLOR(GRN)
+     A            DELLIB        10A  O 16 14
+     A                                 17  4'Function:'
+     A                                      COLOR(GRN)
+     A            DELFUNC       10A  O 17 14
+     A                                 24  2'F10=Confirm Delete'
+     A                                      COLOR(BLU)
+     A                                 24 21'F12=Cancel'
+     A                                      COLOR(BLU)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFMSGSFL – Message subfile (row 24)
+     A*--------------------------------------------------------------
+     A          R KSFMSGSFL                 SFL
+     A                                      SFLMSGRCD(24)
+     A            MSGKEY                    SFLMSGKEY
+     A            PGMQ                      SFLPGMQ
+     A*--------------------------------------------------------------
+     A* Record: KSFMSGCTL – Message subfile control
+     A*--------------------------------------------------------------
+     A          R KSFMSGCTL                 SFLCTL(KSFMSGSFL)
+     A  95                                  SFLDSP
+     A                                      SFLDSPCTL
+     A                                      SFLINZ
+     A  94                                  SFLEND(*MORE)
+     A                                      SFLSIZ(10) SFLPAG(1)
+     A                                      OVERLAY
+     A            PGMQ                      SFLPGMQ
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFMPTY – No records overlay
+     A*--------------------------------------------------------------
+     A          R KSFMPTY
+     A                                      OVERLAY
+     A                                  8  4'No keystore configuration records -
+     A                                      found.'
+     A                                      COLOR(YLW)
+     A*
+     A*--------------------------------------------------------------
+     A* Record: KSFFOOT – Footer legend
+     A*--------------------------------------------------------------
+     A          R KSFFOOT
+     A                                      OVERLAY
+     A                                 23  2'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 23 12'F5=Refresh'
+     A                                      COLOR(BLU)
+     A                                 23 25'F6=Create Keystore'
+     A                                      COLOR(BLU)
+     A                                 23 45'F12=Previous'
+     A                                      COLOR(BLU)

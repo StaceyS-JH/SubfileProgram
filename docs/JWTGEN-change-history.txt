@@ -1,0 +1,209 @@
+================================================================================
+JWTGEN.RPGLE  –  Change History
+================================================================================
+File:     src/JWTGEN.RPGLE  (compiled as SQLRPGLE member type via CRTSQLRPGI)
+Purpose:  Generates signed JWTs using RSA or ECC private keys stored in an
+          IBM i keystore (*KEYFIL).  Supports RS256/RS384/RS512 and
+          ES256/ES384/ES512 algorithms.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+CHANGE 1 – ALGD0500 → ALGD0400 (algorithm descriptor format correction)
+--------------------------------------------------------------------------------
+Problem:
+  The original code used format string 'ALGD0500' and a 28-byte algorithm
+  descriptor data structure for Qc3CalculateSignature.  IBM i documentation
+  confirms that ALGD0500 does not exist.  The correct format for RSA PKCS#1
+  signing is ALGD0400.
+
+Fix:
+  Replaced the 28-byte ALGD0500 data structure (which incorrectly included
+  SignatureType, SaltLength, and TrailerField fields) with the correct 12-byte
+  ALGD0400 layout:
+
+    dcl-ds ALGD0400 qualified;
+      PkaAlgorithm    int(10)  inz(50);        // 50 = RSA
+      PkaBlockFormat  char(1)  inz(x'F1');     // PKCS#1 block type 01 (EBCDIC '1')
+      Reserved1       char(3)  inz(*allx'00');
+      HashAlgorithm   int(10)  inz(3);         // set at runtime: 3/4/5
+    end-ds;
+
+  Updated the format string in the Qc3CalculateSignature call from 'ALGD0500'
+  to 'ALGD0400'.
+
+Reason:
+  Valid IBM i format names for Qc3CalculateSignature are:
+    ALGD0100  –  symmetric algorithms
+    ALGD0400  –  RSA/DSA (asymmetric, PKCS#1)
+    ALGD0600  –  ECC/ECDSA
+
+
+--------------------------------------------------------------------------------
+CHANGE 2 – Base64 encoding replaced with SQL BASE64_ENCODE
+--------------------------------------------------------------------------------
+Problem:
+  The original Base64 encoding used RPG bit-math (%bitrshift, %bitand) on
+  EBCDIC character values.  Because EBCDIC byte values differ from ASCII
+  (e.g. '{' is 0xC0=192 in EBCDIC vs 0x7B=123 in ASCII), the bit arithmetic
+  produced incorrect Base64 output.  Multiple pointer-based and overlay
+  approaches were attempted and also failed.
+
+Fix:
+  Replaced both Base64 procedures (Base64UrlEncode and Base64EncodeDer) with
+  a single SQL-based Base64UrlEncode procedure:
+
+    dcl-proc Base64UrlEncode export;
+      dcl-pi *n varchar(8096);
+        RawData  varchar(8096) const;
+      end-pi;
+      dcl-s AsciiString varchar(8096) ccsid(*utf8);
+      dcl-s B64Url      varchar(8096);
+      AsciiString = RawData;
+      exec sql SET :AsciiString = BASE64_ENCODE(:AsciiString);
+      B64Url = AsciiString;
+      B64Url = %xlate('+/' : '-_' : %trimr(B64Url : '='));
+      return B64Url;
+    end-proc Base64UrlEncode;
+
+  The ccsid(*utf8) host variable ensures SQL sees ASCII byte values.
+  BASE64_ENCODE then produces a correct standard Base64 string.
+  %xlate converts to Base64URL alphabet and %trimr strips padding '='.
+
+  The Base64EncodeDer procedure was deleted entirely as it is no longer needed.
+
+Additional note:
+  The file must be compiled as member type SQLRPGLE using CRTSQLRPGI (not
+  CRTBNDRPG) because of the embedded exec sql statements.  sqlopt(*noclo) is
+  NOT specified in ctl-opt; CRTSQLRPGI handles cursor management.
+
+
+--------------------------------------------------------------------------------
+CHANGE 3 – Signature encoding for binary data (inline SQL in SignRsa/SignEcc)
+--------------------------------------------------------------------------------
+Problem:
+  The RSA and ECC signature bytes returned by Qc3CalculateSignature are raw
+  binary data, not character data.  Passing them through Base64UrlEncode
+  (which does an EBCDIC→UTF-8 character conversion) corrupted the bytes.
+
+Fix:
+  Added inline SQL Base64 encoding directly in SignRsa and SignEcc using
+  separate ccsid(*utf8) variables to hold the raw bytes:
+
+    SigBuffer64 = SigBuffer;   // raw bytes into utf8 field
+    exec sql SET :SigBuffer64 = BASE64_ENCODE(:SigBuffer64);
+    SigB64Ebc = SigBuffer64;
+    SigB64Url = %xlate('+/' : '-_' : %trimr(SigB64Ebc : '='));
+
+  This keeps the binary signature bytes separate from the character
+  Base64UrlEncode procedure used for header/payload.
+
+
+--------------------------------------------------------------------------------
+CHANGE 4 – Fixed invalid RSA/ECC signature (%addr missing *data, wrong CSP)
+--------------------------------------------------------------------------------
+Problem:
+  Signatures generated were structurally valid Base64URL strings but were
+  rejected by jwt.io as invalid.  Comparison against a known-working reference
+  implementation identified two bugs:
+
+  Bug A – Missing *data modifier on %addr for varchar parameters:
+    %addr(SigningInputAscii) points at the 2-byte varchar length prefix, not
+    the character data.  The API was therefore signing 2 garbage bytes prepended
+    to the actual content, producing a signature over wrong data.
+    Same issue applied to the SigBuffer output parameter.
+
+  Bug B – Wrong CSP value:
+    CSP was set to '1' (software-only cryptographic service provider).
+    The working reference code uses '0' (any/system-chosen CSP).
+
+Fix:
+  Changed all four %addr calls in Qc3CalculateSignature to include *data:
+
+    %addr(SigningInputAscii : *data)   // skips 2-byte varchar length prefix
+    %addr(SigBuffer : *data)           // skips 2-byte varchar length prefix
+
+  Changed CSP from '1' to '0' in both SignRsa and SignEcc.
+
+  Applied in both SignRsa and SignEcc.
+
+
+--------------------------------------------------------------------------------
+CHANGE 5 – SigBuffer converted from char to varchar
+--------------------------------------------------------------------------------
+Problem:
+  SigBuffer was declared as char(1024)/char(256).  After the API call,
+  extracting the exact returned bytes required %subst with SigLen each time
+  it was referenced.
+
+Fix:
+  Changed SigBuffer to varchar in both procedures:
+    SignRsa:  dcl-s SigBuffer  varchar(1024);
+    SignEcc:  dcl-s SigBuffer  varchar(256);
+
+  Added pre-sizing before the API call:
+    %len(SigBuffer) = %len(SigBuffer : *max);
+
+  Changed parm 11 (buffer capacity) to:
+    %len(SigBuffer : *max)
+
+  Added post-call trim:
+    %len(SigBuffer) = SigLen;
+
+  Simplified the Base64 step to:
+    SigBuffer64 = SigBuffer;   // no %subst needed
+
+
+--------------------------------------------------------------------------------
+CHANGE 6 – SigBuffer changed to ccsid(*utf8); %len(SigBuffer)=SigLen removed
+           (fixes RNX0450 – value too long)
+--------------------------------------------------------------------------------
+Problem:
+  Assigning varchar SigBuffer (job CCSID / EBCDIC) to SigBuffer64 ccsid(*utf8)
+  triggered RNX0450 "value too long".  RPG attempted an EBCDIC→UTF-8 character
+  conversion on the raw binary signature bytes; some bytes expanded to multi-byte
+  UTF-8 sequences, overflowing the receiving field.
+
+Fix:
+  Changed SigBuffer declaration to ccsid(*utf8) in both SignRsa and SignEcc:
+    SignRsa:  dcl-s SigBuffer  varchar(1024) ccsid(*utf8);
+    SignEcc:  dcl-s SigBuffer  varchar(256)  ccsid(*utf8);
+
+  Because SigBuffer is now the same CCSID as SigBuffer64, the assignment:
+    SigBuffer64 = %subst(SigBuffer : 1 : SigLen);
+  copies raw bytes without any CCSID conversion.
+
+  Removed the now-unnecessary line:
+    %len(SigBuffer) = SigLen;
+
+  The %subst call using SigLen directly extracts the correct number of bytes.
+
+Result:
+  JWT signatures verified as valid by jwt.io for RS256.  RNX0450 resolved.
+
+
+================================================================================
+FINAL STATE – Key design decisions
+================================================================================
+
+  Compilation:   CRTSQLRPGI  (member type SQLRPGLE)
+  ctl-opt:       dftactgrp(*no) actgrp(*new) main(Main) datfmt(*iso)
+                 -- no sqlopt(*noclo) required
+
+  ALGD0400:      12 bytes – PkaAlgorithm=50, PkaBlockFormat=x'F1', Reserved=3,
+                 HashAlgorithm=3/4/5
+
+  ALGD0600:      20 bytes – EccAlgorithm=55, Reserved=4, HashAlgorithm=3/4/5,
+                 DomainParmsLen=0, DomainParmsPtr=*null
+
+  KEYD0400:      56 bytes – QualKSFile(20), RecordLabel(32), Reserved(4)
+
+  Signing input: EBCDIC JSON → ccsid(*utf8) varchar → Qc3CalculateSignature
+                 (%addr with *data to skip varchar length prefix)
+
+  Signature:     Written into ccsid(*utf8) varchar → %subst(n bytes) →
+                 SQL BASE64_ENCODE → %xlate to Base64URL alphabet
+
+  CSP:           '0' (any/system-chosen)
+
+================================================================================

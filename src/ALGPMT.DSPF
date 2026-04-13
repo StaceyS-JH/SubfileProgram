@@ -1,0 +1,116 @@
+      *================================================================
+      * Display File: ALGPMT
+      * Description:  JWT algorithm selection prompt.
+      *               Displays a load-all subfile of all supported JWT
+      *               signing algorithms.  The user types '1' next to
+      *               the desired algorithm and presses Enter to return
+      *               the JWT algorithm value (e.g. RS256, ES256) to
+      *               the caller.
+      *
+      * Records:
+      *   ALGSFLD  – subfile (one row per algorithm)
+      *   ALGCTL   – subfile control / screen body
+      *   ALGFOOT  – static page footer
+      *   ALGERR   – error message overlay (row 24)
+      *
+      * Function keys:
+      *   F3  – Cancel (return without a selection)
+      *   F5  – Refresh (reload subfile – no-op here, list is static)
+      *
+      * Return:
+      *   ALGSEL (10A) – the selected JWT algorithm (e.g. RS256,
+      *                  ES256, EdDSA), or blanks if F3 was pressed.
+      *================================================================
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      INDARA
+     A*
+     A*----------------------------------------------------------------
+     A* Record: ALGSFLD – subfile record
+     A*   One line per algorithm.
+     A*   Columns (132-wide layout):
+     A*    2      Opt        (1A input)
+     A*    6-15   KeyAlg     (10A output)
+     A*   17-36   Family     (20A output)
+     A*   38-82   Description(45A output)
+     A*   84-93   JWT/JWA    (10A output)
+     A*   95-98   KeyBits    (4S 0 output)
+     A*----------------------------------------------------------------
+     A          R ALGSFLD                   SFL
+     A            AOPT           1A  B 10  2VALUES(' ' '1')
+     A                                      COLOR(GRN)
+     A            AKEYALG       10A  O 10  6COLOR(GRN)
+     A            AFAMILY       20A  O 10 17COLOR(GRN)
+     A            ADESC         45A  O 10 38COLOR(GRN)
+     A            AJWT          10A  O 10 84COLOR(GRN)
+     A            AKEYBITS       4S 0O 10 95
+     A*
+     A*----------------------------------------------------------------
+     A* Record: ALGCTL – subfile control
+     A*----------------------------------------------------------------
+     A          R ALGCTL                    SFLCTL(ALGSFLD)
+     A                                      CF03(03 'Cancel')
+     A                                      CF12(12 'Previous')
+     A                                      SFLSIZ(0050)
+     A                                      SFLPAG(0013)
+     A N90                                  SFLDSP
+     A                                      SFLDSPCTL
+     A  90                                  SFLCLR
+     A  92                                  SFLEND(*MORE)
+     A                                      OVERLAY
+     A            ASFLRRN        5S 0H
+     A*
+     A*  Row 1 – program name + centered title
+     A                                  1  2'ALGPMT'
+     A                                      DSPATR(HI)
+     A                                      COLOR(WHT)
+     A                                  1 57'Algorithm Selection'
+     A                                      DSPATR(HI)
+     A                                      COLOR(YLW)
+     A*  Row 3 – usage hint
+     A                                  3  2'Type 1 and press Enter'
+     A                                      COLOR(BLU)
+     A*
+     A*  Row 8 – column headings
+     A                                  8  2'Opt'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8  6'JWT Alg'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 17'Key Family'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 38'Description'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 84'Key Alg'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  8 95'Bits'
+     A                                      COLOR(WHT) DSPATR(HI)
+     A                                  9  2'---'
+     A                                      COLOR(WHT)
+     A                                  9  6'----------'
+     A                                      COLOR(WHT)
+     A                                  9 17'--------------------'
+     A                                      COLOR(WHT)
+     A                                  9 38'-----------------------------------
+     A                                      -----------'
+     A                                      COLOR(WHT)
+     A                                  9 84'----------'
+     A                                      COLOR(WHT)
+     A                                  9 95'----'
+     A                                      COLOR(WHT)
+     A*
+     A*----------------------------------------------------------------
+     A* Record: ALGFOOT – page footer (row 24)
+     A*----------------------------------------------------------------
+     A          R ALGFOOT
+     A                                      OVERLAY
+     A                                 24  2'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 24 11'F12=Previous'
+     A                                      COLOR(BLU)
+     A*
+     A*----------------------------------------------------------------
+     A* Record: ALGERR – error message (row 24, overrides ALGFOOT)
+     A*----------------------------------------------------------------
+     A          R ALGERR
+     A                                      OVERLAY
+     A            AERRMSG       78A  O 24  2COLOR(RED)
+     A                                      DSPATR(HI)

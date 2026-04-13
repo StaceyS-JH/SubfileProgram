@@ -1,0 +1,101 @@
+================================================================================
+GENKEY.RPGLE  –  Change History
+================================================================================
+File:     src/GENKEY.RPGLE  (compiled as RPGLE member type via CRTBNDRPG)
+Purpose:  Generates RSA or ECC key pairs and stores them in an IBM i keystore
+          (*KEYFIL) using the Qc3GenKeyRecord API (service program QC3GENKEY).
+          Supports RSA (512/1024/2048/4096-bit) and ECC (P-256/P-384/P-521/
+          Ed25519/Ed448) algorithms.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+CHANGE 1 – Removed PubLabel parameter and second Qc3GenKeyRecord call
+--------------------------------------------------------------------------------
+Problem:
+  The original program had five call parameters including a fifth parameter
+  PubLabel (32A) for a separate public key label.  The code issued two
+  Qc3GenKeyRecord calls — one for the private key and one for the public key —
+  each using a different label.
+
+  This was architecturally wrong.  The Qc3GenKeyRecord API generates a key
+  PAIR in a single call.  It stores both the private and public key records
+  automatically under the same label.  A second call is not needed or correct.
+
+Fix:
+  Removed ParmPubLabel (the fifth call parameter) entirely from:
+    - The Main procedure dcl-pi interface
+    - The call syntax comment header
+    - All procedure calls within Main
+
+  Reduced the program interface from 5 parameters to 4:
+    Parm 1 – KSFile    10A  Keystore file
+    Parm 2 – KSLib     10A  Keystore library
+    Parm 3 – KeyAlg    10A  Algorithm selector
+    Parm 4 – PrivLabel 32A  Private key label (used for the key pair)
+
+  Removed the second Qc3GenKeyRecord call from both GenerateRsaKey and
+  GenerateEccKey.  Each procedure now issues exactly one API call.
+
+  Removed the PubLabel parameter from the GenerateRsaKey and GenerateEccKey
+  procedure interfaces and all forward prototypes.
+
+
+--------------------------------------------------------------------------------
+CHANGE 2 – Corrected KeyType values for private key generation
+--------------------------------------------------------------------------------
+Problem:
+  The original code used KeyType 51 for RSA private and KeyType 57 for ECC
+  private in the Qc3GenKeyRecord calls.  Per IBM i documentation:
+
+    KeyType 51 = RSA private  (generate private record only)
+    KeyType 57 = ECC private  (generate private record only)
+
+  However, to generate a key PAIR (both private and public records) in a
+  single call, the correct values are:
+
+    KeyType 50 = RSA private  (API generates both private and public)
+    KeyType 56 = ECC private  (API generates both private and public)
+
+Fix:
+  Changed KeyType from 51 → 50 in GenerateRsaKey:
+    Qc3GenKeyRecord( ... 50 : ... )   // RSA private (pair)
+
+  Changed KeyType from 57 → 56 in GenerateEccKey:
+    Qc3GenKeyRecord( ... 56 : ... )   // ECC private (pair)
+
+  Updated the key type reference table in the header comment to reflect the
+  correct values:
+    50 = RSA public    51 = RSA private
+    56 = ECC public    57 = ECC private
+
+  Note: The comment in GenerateRsaKey was also updated to accurately describe
+  that KeyType 50 causes the API to create both the private and public records:
+    // KeyType 50 = RSA private (API creates both private and public records)
+    // KeyType 56 = ECC private (API creates both private and public records)
+
+
+================================================================================
+FINAL STATE – Key design decisions
+================================================================================
+
+  Compilation:   CRTBNDRPG  (member type RPGLE, no embedded SQL)
+  ctl-opt:       dftactgrp(*no) actgrp(*new) main(Main)
+  Parameters:    4 (KSFile, KSLib, KeyAlg, PrivLabel)
+
+  API:           Qc3GenKeyRecord  (QC3GENKEY service program)
+                 9 parameters – single call generates both private and public
+                 key records in the keystore
+
+  Key types used:
+    50 – RSA private (pair generation)
+    56 – ECC private (pair generation)
+
+  RSA key sizes supported:  512, 1024, 2048, 4096 bits
+  ECC key sizes supported:  256 (P-256), 384 (P-384), 521 (P-521),
+                            255 (Ed25519), 448 (Ed448)
+
+  Public exponents:  65537 (standard) or 3 (RSA2048E3 variant only)
+  CSP:               '1' (software-only)
+
+================================================================================
