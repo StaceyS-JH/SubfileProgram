@@ -38,15 +38,15 @@ ctl-opt dftactgrp(*no) actgrp(*new) main(Main);
 // Prototype: JWTGEN
 //--------------------------------------------------------------
 dcl-pr JWTGEN extpgm('JWTGEN');
-  KSFile     char(10);      //  1 Keystore file
-  KSLib      char(10);      //  2 Keystore library
-  KeyLabel   char(32);      //  3 Private key record label
-  Algorithm  char(8);       //  4 Signing algorithm
-  Issuer     char(128);     //  5 JWT "iss" claim
-  Subject    char(128);     //  6 JWT "sub" claim
-  Audience   char(128);     //  7 JWT "aud" claim
-  ExpiSecs   int(10);       //  8 Token lifetime in seconds
-  Jti        char(36);      //  9 JWT ID (blank = omit)
+  KSFile     char(10) const;      //  1 Keystore file
+  KSLib      char(10) const;      //  2 Keystore library
+  KeyLabel   char(32) const;      //  3 Private key record label
+  Algorithm  char(10) const;      //  4 Signing algorithm
+  Issuer     varchar(128) const options(*trim:*varsize);     //  5 JWT "iss" claim
+  Subject    varchar(128) const options(*trim:*varsize);     //  6 JWT "sub" claim
+  Audience   varchar(128) const options(*trim:*varsize);     //  7 JWT "aud" claim
+  ExpiSecs   int(10) const;       //  8 Token lifetime in seconds
+  Jti        char(36) const;      //  9 JWT ID (blank = omit)
   JwtOut     char(8192);    // 10 Output JWT string
 end-pr;
 
@@ -65,7 +65,7 @@ dcl-proc Main;
   dcl-s p_KSFile    char(10);
   dcl-s p_KSLib     char(10);
   dcl-s p_KeyLabel  char(32);
-  dcl-s p_Algorithm char(8);
+  dcl-s p_Algorithm char(10);
   dcl-s p_Issuer    char(128);
   dcl-s p_Subject   char(128);
   dcl-s p_Audience  char(128);

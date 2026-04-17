@@ -10,13 +10,15 @@
 //
 // Call syntax:
 //   CALL PGM(MYLIB/GETACCTKN)
-//        PARM( JwtLabel  AccessToken  ExpiresIn  ErrorMsg  HttpRc )
+//        PARM( JwtLabel  AccessToken  ExpiresIn  ErrorMsg  HttpRc
+//              [Scope] )
 //
 // Parm  1 - JwtLabel      36A   INPUT
 // Parm  2 - AccessToken 4096A   OUTPUT
 // Parm  3 - ExpiresIn     10I   OUTPUT
 // Parm  4 - ErrorMsg     256A   OUTPUT (blank on success)
 // Parm  5 - HttpRc        10I   OUTPUT (HTTPAPI transport rc)
+// Parm  6 - Scope        512A   INPUT  OPTIONAL (blank = default)
 //
 // Notes:
 // - JWT signing config is loaded by JwtLabel via GETJWTCFG.
@@ -34,15 +36,15 @@ ctl-opt dftactgrp(*no) actgrp(*new) main(Main)
 // External program prototypes
 //--------------------------------------------------------------
 dcl-pr JWTGEN extpgm('JWTGEN');
-  KSFile     char(10);
-  KSLib      char(10);
-  KeyLabel   char(32);
-  Algorithm  char(8);
-  Issuer     char(128);
-  Subject    char(128);
-  Audience   char(128);
-  ExpiSecs   int(10);
-  Jti        char(36);
+  KSFile     char(10) const;
+  KSLib      char(10) const;
+  KeyLabel   char(32) const;
+  Algorithm  char(10) const;
+  Issuer     varchar(128) const options(*trim:*varsize);
+  Subject    varchar(128) const options(*trim:*varsize);
+  Audience   varchar(128) const options(*trim:*varsize);
+  ExpiSecs   int(10) const;
+  Jti        char(36) const;
   JwtOut     char(8192);
 end-pr;
 
@@ -72,6 +74,30 @@ dcl-pr BuildRequestBody varchar(12000);
   Scope varchar(512)  const;
 end-pr;
 
+dcl-pr ValidateConfig ind;
+  Issuer128      char(128);
+  Subject128     char(128);
+  CfgAudience256 char(256) const;
+  CfgAlg10       char(10) const;
+  CfgExpSecs     int(10) const;
+  Audience128    char(128);
+  Alg8           char(10);
+  ErrorMsg       char(256);
+end-pr;
+
+dcl-pr BuildClientAssertion ind;
+  KSFile       char(10) const;
+  KSLib        char(10) const;
+  KeyLabel     char(32) const;
+  Alg8         char(10) const;
+  Issuer128    char(128) const;
+  Subject128   char(128) const;
+  Audience128  char(128) const;
+  ExpSecs      int(10) const;
+  JwtTrim      varchar(8192);
+  ErrorMsg     char(256);
+end-pr;
+
 //--------------------------------------------------------------
 // SQL options
 //--------------------------------------------------------------
@@ -94,17 +120,32 @@ dcl-ds DsToken qualified;
   error_description varchar(1024) inz('');
 end-ds;
 
+dcl-pr CallTokenEndpoint ind;
+  Endpoint     varchar(2048) const;
+  RequestBody  varchar(12000) const;
+  ResponseBody varchar(16000);
+  HttpRc       int(10);
+  ErrorMsg     char(256);
+end-pr;
+
+dcl-pr ParseTokenJson ind;
+  ResponseBody varchar(16000) const;
+  JsonOptions  varchar(128) const;
+  Token        likeds(DsToken);
+end-pr;
+
 //--------------------------------------------------------------
 // Main
 //--------------------------------------------------------------
 dcl-proc Main;
 
   dcl-pi Main;
-    ParmJwtLabel    char(36);
-    ParmAccessToken char(4096);
-    ParmExpiresIn   int(10);
-    ParmError       char(256);
-    ParmHttpRc      int(10);
+    ParmJwtLabel    char(36);                   // INPUT
+    ParmAccessToken char(4096);                 // OUTPUT
+    ParmExpiresIn   int(10);                    // OUTPUT
+    ParmError       char(256);                  // OUTPUT
+    ParmHttpRc      int(10);                    // OUTPUT
+    ParmScope       char(512) options(*nopass); // OPTIONAL INPUT
   end-pi;
 
   dcl-c ClientAssertionType 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
@@ -117,7 +158,7 @@ dcl-proc Main;
   dcl-s CfgKeyLabel    char(32)     inz(*blanks);
   dcl-s CfgAudience256 char(256)    inz(*blanks);
   dcl-s CfgAlg10       char(10)     inz(*blanks);
-  dcl-s Alg8           char(8)      inz(*blanks);
+  dcl-s Alg8           char(10)     inz(*blanks);
   dcl-s CfgFound       char(1)      inz('N');
   dcl-s CfgMsg         char(78)     inz(*blanks);
   dcl-s CfgExpSecs     int(10)      inz(0);
@@ -126,14 +167,21 @@ dcl-proc Main;
   dcl-s JwtTrim        varchar(8192) inz('');
   dcl-s RequestBody    varchar(12000) inz('');
   dcl-s ResponseBody   varchar(16000) inz('');
+  dcl-s HttpError      char(256)    inz(*blanks);
   dcl-s JsonOptions    varchar(128) inz('doc=string case=convert');
-  dcl-s ScopeV         varchar(512) inz('openid');
+  dcl-s Scope          varchar(512) inz('openid');
 
   // Clear outputs first.
   ParmAccessToken = *blanks;
   ParmExpiresIn   = 0;
   ParmError       = *blanks;
   ParmHttpRc      = 0;
+
+  if %passed(ParmScope);
+    if %trim(ParmScope) <> *blanks;
+      Scope = %trim(ParmScope);
+    endif;
+  endif;
 
   if %trim(ParmJwtLabel) = *blanks;
     ParmError = 'JWT label is required.';
@@ -161,91 +209,45 @@ dcl-proc Main;
     return;
   endif;
 
-  if CfgExpSecs <= 0;
-    ParmError = 'JWT config has invalid token life (EXPIRY_SEC).';
+  if not ValidateConfig(Issuer128
+                      : Subject128
+                      : CfgAudience256
+                      : CfgAlg10
+                      : CfgExpSecs
+                      : Audience128
+                      : Alg8
+                      : ParmError);
     return;
   endif;
 
-  if %trim(Issuer128) = *blanks;
-    ParmError = 'JWT config issuer is required.';
+  if not BuildClientAssertion(CfgKSFile
+                            : CfgKSLib
+                            : CfgKeyLabel
+                            : Alg8
+                            : Issuer128
+                            : Subject128
+                            : Audience128
+                            : CfgExpSecs
+                            : JwtTrim
+                            : ParmError);
     return;
   endif;
 
-  if %trim(Subject128) = *blanks;
-    Subject128 = Issuer128;
-  endif;
+  RequestBody = BuildRequestBody(JwtTrim : Scope);
 
-  if %trim(CfgAudience256) = *blanks;
-    ParmError = 'JWT config audience is required (endpoint URL).';
+  if not CallTokenEndpoint(%trim(CfgAudience256)
+                         : RequestBody
+                         : ResponseBody
+                         : ParmHttpRc
+                         : HttpError);
+    ParmError = HttpError;
     return;
   endif;
 
-  // JWTGEN currently accepts 128-char iss/sub/aud parameters.
-  if %len(%trimr(Issuer128)) > 128;
-    ParmError = 'Issuer length exceeds JWTGEN 128-char limit.';
-    return;
-  endif;
-  if %len(%trimr(Subject128)) > 128;
-    ParmError = 'Subject length exceeds JWTGEN 128-char limit.';
-    return;
-  endif;
-  if %len(%trimr(CfgAudience256)) > 128;
-    ParmError = 'Audience length exceeds JWTGEN 128-char limit.';
-    return;
-  endif;
-
-  Audience128 = %trimr(CfgAudience256);
-  Alg8 = %subst(%trimr(CfgAlg10) : 1 : 8);
-
-  if %trim(Alg8) = *blanks;
-    ParmError = 'JWT config algorithm is required.';
-    return;
-  endif;
-
-  exec sql
-    set :Jti = qsys2.generate_uuid();
-
-  callp JWTGEN(CfgKSFile
-             : CfgKSLib
-             : CfgKeyLabel
-             : Alg8
-             : Issuer128
-             : Subject128
-             : Audience128
-             : CfgExpSecs
-             : Jti
-             : JwtOut);
-
-  JwtTrim = %trimr(JwtOut);
-  if JwtTrim = '';
-    ParmError = 'JWT generation failed (empty token).';
-    return;
-  endif;
-
-  RequestBody = BuildRequestBody(JwtTrim : ScopeV);
-
-  http_setauth(HTTP_AUTH_NONE : ' ' : ' ');
-
-  ParmHttpRc = http_req('POST'
-                      : %trim(CfgAudience256)
-                      : *omit
-                      : ResponseBody
-                      : *omit
-                      : RequestBody
-                      : 'application/x-www-form-urlencoded');
-
-  if ParmHttpRc <> 1;
-    ParmError = 'Token endpoint HTTP request failed.';
-    return;
-  endif;
-
-  monitor;
-    data-into DsToken %data(ResponseBody : JsonOptions)
-                     %parser('YAJLINTO');
-  on-error;
+  if not ParseTokenJson(ResponseBody : JsonOptions : DsToken);
     ParmError = 'Unable to parse token JSON response.';
     return;
-  endmon;
+  endif;
 
   if %trim(DsToken.access_token) = '';
     if %trim(DsToken.error_description) <> '';
@@ -263,6 +265,169 @@ dcl-proc Main;
 
   *inlr = *on;
 
+end-proc;
+
+//--------------------------------------------------------------
+// Execute OAuth token endpoint call
+//--------------------------------------------------------------
+dcl-proc CallTokenEndpoint;
+  dcl-pi *n ind;
+    Endpoint     varchar(2048) const;
+    RequestBody  varchar(12000) const;
+    ResponseBody varchar(16000);
+    HttpRc       int(10);
+    ErrorMsg     char(256);
+  end-pi;
+
+  dcl-s RespSnippet varchar(220) inz('');
+
+  http_setauth(HTTP_AUTH_NONE : ' ' : ' ');
+
+  HttpRc = http_req('POST'
+                  : Endpoint
+                  : *omit
+                  : ResponseBody
+                  : *omit
+                  : RequestBody
+                  : 'application/x-www-form-urlencoded');
+
+  if HttpRc <> 1;
+    ErrorMsg = 'Token endpoint transport failure rc=' + %trim(%char(HttpRc));
+    if %trim(ResponseBody) <> '';
+      RespSnippet = %subst(%trim(ResponseBody) : 1 : 220);
+      ErrorMsg = %subst(%trim(ErrorMsg) + ' resp=' + RespSnippet : 1 : 256);
+    endif;
+  else;
+    ErrorMsg = *blanks;
+  endif;
+
+  return (HttpRc = 1);
+end-proc;
+
+//--------------------------------------------------------------
+// Parse token JSON response into result DS
+//--------------------------------------------------------------
+dcl-proc ParseTokenJson;
+  dcl-pi *n ind;
+    ResponseBody varchar(16000) const;
+    JsonOptions  varchar(128) const;
+    Token        likeds(DsToken);
+  end-pi;
+
+  clear Token;
+
+  monitor;
+    data-into Token %data(ResponseBody : JsonOptions)
+                    %parser('YAJLINTO');
+  on-error;
+    return *off;
+  endmon;
+
+  return *on;
+end-proc;
+
+//--------------------------------------------------------------
+// Validate retrieved config and normalize signer inputs
+//--------------------------------------------------------------
+dcl-proc ValidateConfig;
+  dcl-pi *n ind;
+    Issuer128      char(128);
+    Subject128     char(128);
+    CfgAudience256 char(256) const;
+    CfgAlg10       char(10) const;
+    CfgExpSecs     int(10) const;
+    Audience128    char(128);
+    Alg8           char(10);
+    ErrorMsg       char(256);
+  end-pi;
+
+  if CfgExpSecs <= 0;
+    ErrorMsg = 'JWT config has invalid token life (EXPIRY_SEC).';
+    return *off;
+  endif;
+
+  if %trim(Issuer128) = *blanks;
+    ErrorMsg = 'JWT config issuer is required.';
+    return *off;
+  endif;
+
+  if %trim(Subject128) = *blanks;
+    Subject128 = Issuer128;
+  endif;
+
+  if %trim(CfgAudience256) = *blanks;
+    ErrorMsg = 'JWT config audience is required (endpoint URL).';
+    return *off;
+  endif;
+
+  // JWTGEN currently accepts 128-char iss/sub/aud parameters.
+  if %len(%trimr(Issuer128)) > 128;
+    ErrorMsg = 'Issuer length exceeds JWTGEN 128-char limit.';
+    return *off;
+  endif;
+  if %len(%trimr(Subject128)) > 128;
+    ErrorMsg = 'Subject length exceeds JWTGEN 128-char limit.';
+    return *off;
+  endif;
+  if %len(%trimr(CfgAudience256)) > 128;
+    ErrorMsg = 'Audience length exceeds JWTGEN 128-char limit.';
+    return *off;
+  endif;
+
+  Audience128 = %trimr(CfgAudience256);
+  Alg8 = %trimr(CfgAlg10);
+
+  if %trim(Alg8) = *blanks;
+    ErrorMsg = 'JWT config algorithm is required.';
+    return *off;
+  endif;
+
+  ErrorMsg = *blanks;
+  return *on;
+end-proc;
+
+//--------------------------------------------------------------
+// Build JWT client assertion using JWTGEN
+//--------------------------------------------------------------
+dcl-proc BuildClientAssertion;
+  dcl-pi *n ind;
+    KSFile       char(10) const;
+    KSLib        char(10) const;
+    KeyLabel     char(32) const;
+    Alg8         char(10) const;
+    Issuer128    char(128) const;
+    Subject128   char(128) const;
+    Audience128  char(128) const;
+    ExpSecs      int(10) const;
+    JwtTrim      varchar(8192);
+    ErrorMsg     char(256);
+  end-pi;
+
+  dcl-s Jti    char(36)   inz(*blanks);
+  dcl-s JwtOut char(8192) inz(*blanks);
+
+  exec sql
+    set :Jti = qsys2.generate_uuid();
+
+  callp JWTGEN(KSFile
+             : KSLib
+             : KeyLabel
+             : Alg8
+             : Issuer128
+             : Subject128
+             : Audience128
+             : ExpSecs
+             : Jti
+             : JwtOut);
+
+  JwtTrim = %trimr(JwtOut);
+  if JwtTrim = '';
+    ErrorMsg = 'JWT generation failed (empty token).';
+    return *off;
+  endif;
+
+  ErrorMsg = *blanks;
+  return *on;
 end-proc;
 
 //--------------------------------------------------------------

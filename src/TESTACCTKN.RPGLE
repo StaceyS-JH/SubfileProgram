@@ -17,6 +17,7 @@ dcl-pr GETACCTKN extpgm('GETACCTKN');
   ExpiresIn    int(10);
   ErrorMsg     char(256);
   HttpRc       int(10);
+  Scope        char(512) options(*nopass);
 end-pr;
 
 //==============================================================
@@ -34,6 +35,7 @@ dcl-proc Main;
   dcl-s wExpiresIn   int(10)    inz(0);
   dcl-s wErrorMsg    char(256)  inz(*blanks);
   dcl-s wHttpRc      int(10)    inz(0);
+  dcl-s wScope       char(512)  inz(*blanks);
 
   if %trimr(p_Environment) = '';
     p_Environment = 'DEV';
@@ -43,20 +45,24 @@ dcl-proc Main;
   select;
     when %upper(%trimr(p_Environment)) = 'STG';
       wJwtLabel = 'BSL-STG';
+      wScope = 'openid profile';
 
     other;
       wJwtLabel = 'BSL-DEV';
+      wScope = 'openid email';
   endsl;
 
   dsply ('Env      : ' + %trimr(p_Environment));
   dsply ('JWTLabel : ' + %trimr(wJwtLabel));
+  dsply ('Scope    : ' + %trimr(wScope));
 
   callp GETACCTKN(
       wJwtLabel
     : wAccessToken
     : wExpiresIn
     : wErrorMsg
-    : wHttpRc);
+    : wHttpRc
+    : wScope);
 
   if %trimr(wErrorMsg) <> '';
     dsply ('HTTP rc  : ' + %char(wHttpRc));

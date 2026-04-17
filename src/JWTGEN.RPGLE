@@ -30,12 +30,12 @@
 //   Parm 1 – KSFile    10A  Keystore file   (e.g. 'JWTKEYS   ')
 //   Parm 2 – KSLib     10A  Keystore library (e.g. 'MYLIB     ')
 //   Parm 3 – KeyLabel  32A  Private key record label in keystore
-//   Parm 4 – Algorithm  8A  'RS256   ' / 'RS384   ' / 'RS512   '
+//   Parm 4 – Algorithm 10A  'RS256     ' / 'RS384     ' / 'RS512     '
 //                           'PS256   ' / 'PS384   ' / 'PS512   '
 //                           'ES256   ' / 'ES384   ' / 'ES512   '
-//   Parm 5 – Issuer   128A  JWT "iss" claim
-//   Parm 6 – Subject  128A  JWT "sub" claim
-//   Parm 7 – Audience 128A  JWT "aud" claim
+//   Parm 5 – Issuer   128A/VARYING  JWT "iss" claim
+//   Parm 6 – Subject  128A/VARYING  JWT "sub" claim
+//   Parm 7 – Audience 128A/VARYING  JWT "aud" claim
 //   Parm 8 – ExpiSecs  10I  Token lifetime in seconds (0 = no exp)
 //   Parm 9 – ParmJti   36A  JWT ID claim ("jti"); blank = omit claim
 //   Parm 10 – JwtOut  8192A  Receives the signed JWT string
@@ -251,19 +251,19 @@ end-pr;
 dcl-proc Main;
 
   dcl-pi Main;
-    ParmFile    char(10);
-    ParmLib     char(10);
-    ParmLabel   char(32);
-    ParmAlg     char(8);
-    ParmIssuer  char(128);
-    ParmSubject char(128);
-    ParmAud     char(128);
-    ParmExpSecs int(10);
-    ParmJti     char(36);
+    ParmFile    char(10) const;
+    ParmLib     char(10) const;
+    ParmLabel   char(32) const;
+    ParmAlg     char(10) const;
+    ParmIssuer  varchar(128) const options(*trim:*varsize);
+    ParmSubject varchar(128) const options(*trim:*varsize);
+    ParmAud     varchar(128) const options(*trim:*varsize);
+    ParmExpSecs int(10) const;
+    ParmJti     char(36) const;
     ParmJwtOut  char(8192);
   end-pi;
 
-  dcl-s AlgUpper  char(8);
+  dcl-s AlgUpper  char(10);
   dcl-s AlgFamily char(2);   // first 2 chars: 'RS' / 'PS' / 'ES'
   dcl-s AlgBits   char(3);   // last  3 chars: '256' / '384' / '512'
   dcl-s NowSecs   int(10)  inz(0);

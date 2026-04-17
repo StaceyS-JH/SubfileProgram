@@ -67,7 +67,7 @@ Fix:
   Updated the key type reference table in the header comment to reflect the
   correct values:
     50 = RSA public    51 = RSA private
-    56 = ECC public    57 = ECC private
+    56 = ECC public    57 = ECC privateP
 
   Note: The comment in GenerateRsaKey was also updated to accurately describe
   that KeyType 50 causes the API to create both the private and public records:

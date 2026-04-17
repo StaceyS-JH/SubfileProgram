@@ -101,7 +101,7 @@ LABEL ON COLUMN JWTCFG (
 -- Run this only if the table already exists without the column.
 -- ==============================================================
 -- ALTER TABLE JWTCFG
---   ADD COLUMN JWALG CHAR(8) NOT NULL DEFAULT '';
+--   ADD COLUMN JWALG CHAR(10) NOT NULL DEFAULT '';
 -- LABEL ON COLUMN JWTCFG (JWALG IS 'JWT Algorithm');
 
 -- Migration: add JWTLABEL for lookup by label.
