@@ -124,10 +124,9 @@ M06  D                 s             10i 0 inz(0050000)
        dcl-c cEndr const('"HBServiceType":"ENDRECV"');
 
 
-       // ReadDta: r_guid=HSGUID (response), r_trguid=HSTRGUID (->HTGUID), r_clob=HSBODY
+       // ReadDta: r_guid=HSGUID (= HTGUID = w_guid2), r_clob=HSBODY
        dcl-ds ReadDta;
          r_guid   char(36);
-         r_trguid char(36);
 23005     r_clob sqltype(clob:2000000) inz('');
        END-DS;
 
@@ -406,6 +405,18 @@ sas    dcl-s PrmJson varchar(4000);
        dcl-pr WriteRecv ind end-pr;
        dcl-pr WriteEndR ind end-pr;
 
+23006  dcl-pr GetReqFiNum char(4);
+23006    inString like(PrmHead);
+23006  end-pr;
+
+      //--------------------------------------------------------------
+      // SQL options
+      //--------------------------------------------------------------
+       exec sql
+         Set Option
+           Commit    = *None,
+           CloSqlCsr = *EndMod,
+           DatFmt    = *ISO;
 
 
      C     *entry        plist
@@ -806,8 +817,7 @@ M03    w_dtaqlib = d_BankLib;
 
       //---------------------------------------------------------
       // ReadSQL - Retrieve response from HBRESP
-      //           r_guid    = HSGUID  (response activity GUID)
-      //           r_trguid  = HSTRGUID (-> HTGUID in HBSTRANS)
+      //           r_guid    = HSGUID  (= HTGUID = w_guid2)
       //           r_clob    = HSBODY  (JSON response payload)
       //---------------------------------------------------------
         dcl-proc ReadSQL;
@@ -817,7 +827,7 @@ M03    w_dtaqlib = d_BankLib;
 23005      r_clob_len = 0;
 
           Exec SQL
-               Select HSGUID, HSTRGUID, HSBODY
+               Select HSGUID, HSBODY
                into :ReadDta
                from HBRESP
                where HSGUID = :w_guid;
@@ -848,10 +858,9 @@ M03    w_dtaqlib = d_BankLib;
           w_timestmp = %timestamp();
           w_stat = p_stat;
 
-          // Use r_trguid (HSTRGUID from HBRESP) as the HBSTRANS key
           Exec SQL
             update HBSTRANS set HTSNDSTS = :p_stat
-              where HTGUID = :r_trguid;
+              where HTGUID = :r_guid;
 
           return;
 
@@ -1380,6 +1389,52 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
           return *on;
 
         end-proc;
+
+      //----------------------------------------------------------------------
+23006 // Get the Request FI Number from the Header string
+      //----------------------------------------------------------------------
+23006  dcl-proc GetReqFiNum;
+         dcl-pi *n char(4);
+           inString like(PrmHead);
+         end-pi;
+
+         dcl-s idx1 int(10);
+         dcl-s idx2 int(10);
+         dcl-s idx3 int(10);
+         dcl-s myFiNum char(4) inz(*blanks);
+         dcl-s myError ind inz(*off);
+
+         reset myFiNum;
+         reset myError;
+
+         idx1 = 0;
+         for idx2 = 1 to 3;
+           idx1 = %scan('/' : inString: idx1+1);
+         endfor;
+         if idx1 = 0;
+           myError = *on;
+         endif;
+
+         if not myError;
+           idx3 = %scan('/' : inString: idx1+1);
+           if idx3 = 0;
+             myError = *on;
+           else;
+             myFiNum = %subst(inString:idx1+1: idx3-idx1-1);
+           endif;
+         endif;
+
+         if myFiNum = *blanks;
+           myError = *on;
+         endif;
+
+         if myError = *on;
+           return *blanks;
+         else;
+           return myFiNum;
+         endif;
+
+23006   end-proc;
       /end-free
 
       *--------------------------------------------------------\

@@ -16,23 +16,77 @@ This unified design represents the most scalable, maintainable, and robust solut
 
 The project will be implemented in two distinct phases to manage complexity and reduce risk.
 
-### Phase 1: Database Refactoring (Synchronous)
-1.  **Create New Tables:** Define and create the new `HBSTRANS`, `HBSREQ`, and `HBRESP` tables.
-2.  **Refactor Application:** Modify the application to write to the new tables synchronously. This step improves the database schema without introducing asynchronous complexity.
+### Phase 1: Database Refactoring (Synchronous) ✅ Code-Complete
+1.  **Create New Tables:** Define and create the new `HBSTRANS`, `HBSREQ`, and `HBRESP` tables. ✅
+2.  **Refactor Application:** Modify the application to write to the new tables synchronously. ✅ (`HBSHANDLR`, `HBSCHILD1`, `HBSWORK` all updated)
 3.  **Test & Deploy:** Validate and deploy the synchronous refactoring to establish a stable foundation.
 
 ### Phase 2: Asynchronous & Service Architecture Implementation
 1.  **Create Asynchronous Framework:** Create the persistent `HBSWRITER` job and the `HBSLOGDQ` data queue.
 2.  **Offload CLOB Writes:** Refactor the application to write large JSON payloads to User Spaces and send messages to the writer job, removing the `INSERT` from the main transaction path.
 3.  **Implement Writer Logic:** The `HBSWRITER` will process the queue, write data from the User Space to the database, and delete the User Space.
-4.  **Implement Service Architecture:** Choose and implement one of the two service architecture options detailed in section 3.2.
+4.  **Implement Service Architecture:** Choose and implement one of the two service architecture options detailed in section 4.2.
 5.  **Refactor Response Flow:** Ensure the final response from `HBSHANDLR` is passed back to `HBSCHILD1` via a pointer to avoid copying large memory blocks.
 6.  **Create Scavenger Job:** Implement a periodic cleanup job to remove any orphaned User Spaces or other objects.
 7.  **Test & Deploy:** Validate and deploy the full asynchronous, high-performance solution.
 
-## 3. Core Architectural Changes
+## 3. Phase 1 Implementation Notes
 
-### 3.1. Asynchronous Logging with a Persistent Writer
+The following design decisions were made during Phase 1 implementation. Phase 2 must account for them.
+
+### 3.1. GUID Strategy
+
+Three distinct GUIDs are used per transaction:
+
+| Field | Value | Source |
+|---|---|---|
+| `HBSTRANS.HTGUID` | Locally generated (`w_guid2 = hbstools_CrtGUID()`) | `HBSCHILD1.WriteRecv` |
+| `HBSTRANS.HTRQAGUID` | JSON `ActivityId` (`w_guid`) | Parsed from inbound request |
+| `HBSTRANS.HTRQPGUID` | JSON `ParentActivityId` (`w_pguid`) | Parsed from inbound request |
+
+`HTGUID` is the primary correlation key used throughout — it is the key in `HBSREQ`, and is stored as `HSTRGUID` in `HBRESP` to provide the back-link.
+
+### 3.2. No Foreign Key Constraints on HBSREQ or HBRESP
+
+`HBSREQ` and `HBRESP` do **not** have FK constraints back to `HBSTRANS`. This was an intentional design decision because:
+
+- `HBSCHILD1` inserts into `HBSTRANS` **and** `HBSREQ` together before putting the GUID on the receive data queue
+- `HBSHANDLR` inserts into `HBRESP` before `HBSCHILD1` reads the response
+- The strict write ordering makes FKs unenforceable without deferral
+
+In Phase 2, when `HBSWRITER` takes over the inserts asynchronously, this ordering constraint must still be respected — the `HBSTRANS` row must exist before `HBSWRITER` attempts to insert the `HBSREQ` CLOB data.
+
+### 3.3. Two-Phase HBSTRANS Write Pattern
+
+`HBSTRANS` is written in two steps by two different programs:
+
+1.  **`HBSCHILD1.WriteRecv`** — inserts the row with `HTGUID`, `HTRQAGUID`, `HTRQPGUID`, `HTTYPE`, `HTRCVSTS`, `HTSNDSTS`. Service name (`HTSNAME`) and program name (`HTPNAME`) are left as empty defaults.
+2.  **`HBSHANDLR.WrtTrans`** — updates the existing row (`UPDATE ... WHERE HTGUID = r_pguid`) to fill in `HTSNAME`, `HTPNAME`, and set `HTSNDSTS`.
+
+In Phase 2, `HBSWRITER` will take over step 1 for the CLOB body write, but the two-step ownership pattern should be preserved.
+
+### 3.4. HBRESP Back-Link Column (HSTRGUID)
+
+`HBRESP` has an `HSTRGUID CHAR(36)` column that stores `HTGUID` (= `w_guid2`). This is the programmatic replacement for the dropped FK. It is populated by `HBSHANDLR.WrtSend` using `wReqData.r_pguid`.
+
+`HBSCHILD1.ReadSQL` selects `HSTRGUID` into `ReadDta.r_trguid`, which `UpdtStat` then uses to key the final `UPDATE HBSTRANS SET HTSNDSTS` — without this, `HBSCHILD1` would have no way to find the right `HBSTRANS` row, since it only has `wActvtGUID` (= `HBRESP.HSGUID`) at that point.
+
+### 3.5. Files Modified in Phase 1
+
+| File | Type | Changes |
+|---|---|---|
+| `HBSTRANS.SQL` | DDL | New table; `HTSNAME`/`HTPNAME` are `NOT NULL WITH DEFAULT ''` |
+| `HBSREQ.SQL` | DDL | New table; no FK |
+| `HBRESP.SQL` | DDL | New table; no FK; includes `HSTRGUID` |
+| `HBSHANDLR.SQLRPGLE` | Program | `WrtTrans` → UPDATE; `WrtSend` → `INSERT INTO HBRESP`; `UpdtStat` → `UPDATE HBSTRANS` |
+| `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQ`; `ReadSQL` → `HBRESP`; `UpdtStat` uses `r_trguid` |
+| `HBSWORK.SQLRPGLE` | Program | `GetRQWorkData`/`GetMNWorkData` → `HBSREQ JOIN HBSTRANS`; `GetSRWorkData` → `HBRESP JOIN HBSTRANS` |
+
+---
+
+## 4. Core Architectural Changes
+
+### 4.1. Asynchronous Logging with a Persistent Writer
 
 To resolve I/O bottlenecks, we will implement a unified asynchronous logging mechanism.
 
@@ -41,7 +95,7 @@ To resolve I/O bottlenecks, we will implement a unified asynchronous logging mec
 *   **Communication (Data Queues):** A single, permanent Data Queue (`HBSLOGDQ`) will act as the work queue. Messages will contain the User Space name, its library, and the transaction GUID.
 *   **Logging Control File (`HBSLOGCTL`):** A new configuration file will allow logging to be toggled on or off for each service.
 
-### 3.2. Service Architecture: Two Options
+### 4.2. Service Architecture: Two Options
 
 To balance the need for performance with operational agility (like applying hotfixes), two distinct architectures are proposed for the service layer. The choice can be made during implementation based on final priorities.
 
@@ -71,27 +125,27 @@ This model prioritizes maximum performance by eliminating call overhead.
 *   **Cons:**
     *   **No Live Recompiles:** Once a service program is activated and its pointer is cached, it is locked. Recompiling and deploying a new version requires clearing the cache (e.g., via a `RELOAD` command to the handler) or restarting the handler jobs.
 
-### 3.3. Memory Management & Pointer Usage
+### 4.3. Memory Management & Pointer Usage
 
 A core tenet of this design is to minimize memory duplication. Large data payloads will be passed by reference using pointers.
 
 *   **Asynchronous Logging Flow:** Only the 10-character User Space name (acting as a handle) is passed between jobs, not the multi-megabyte payload itself.
 *   **Client Response Flow (`HBSHANDLR` -> `HBSCHILD1`):** The final response payload will be passed back to `HBSCHILD1` via a pointer to the memory buffer, avoiding a costly data copy.
 
-## 4. Resource Management & Preventing Orphans
+## 5. Resource Management & Preventing Orphans
 
 A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 
 1.  **Sequential Ownership (Primary Defense):** The process establishes a clear chain of ownership. `HBSCHILD1` creates the User Space, `HBSHANDLR` uses it, and then passes ownership to `HBSWRITER`. **The `HBSWRITER` job is the sole and final owner responsible for deleting the User Space.**
 2.  **Scavenger Job (Secondary Defense):** A periodic "scavenger" job will run to find and delete any objects older than a defined Time-to-Live (e.g., 24 hours), ensuring the system remains clean.
 
-## 5. Performance & Implementation Considerations
+## 6. Performance & Implementation Considerations
 
 *   **Synchronous Status Updates:** It has been reviewed and confirmed that small, fast SQL `UPDATE` statements (e.g., for a status flag) do **not** need to be offloaded and can be performed synchronously by the main application programs.
 *   **Error Handling:** The `HBSWRITER` program must have robust error handling to log any failures during the database write process.
 *   **Job Queue Management:** The `HBSWRITER` job should be configured to run in an appropriate subsystem and job queue.
 
-## 6. Benefits
+## 7. Benefits
 
 *   **Maximum Performance:** Client response time is no longer impacted by database write or (with Option B) program call latency.
 *   **Increased Throughput (TPS):** Handler and receiver jobs are freed up much faster, allowing them to process more transactions.

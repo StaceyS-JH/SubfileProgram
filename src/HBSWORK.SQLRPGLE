@@ -105,8 +105,8 @@ end-proc;
 //---------------------------------------------------------
 // GetSRWorkData - Get send-response work data
 //   Queries HBRESP joined with HBSTRANS
-//   wr_pguid    = HSTRGUID  (HTGUID = w_guid2)
-//   wr_aguid    = HSGUID    (wActvtGUID from host program)
+//   wr_pguid    = HSGUID    (= HTGUID = w_guid2)
+//   wr_aguid    = HSGUID    (= HTGUID = w_guid2)
 //   wr_hshstsrv = HTPNAME   (host program name for SRSrvcMap lookup)
 //   wr_sql_clob = HSBODY    (response JSON payload)
 //---------------------------------------------------------
@@ -132,10 +132,10 @@ end-pi;
   clear wSndRes;
 
   exec sql
-    select r.HSTRGUID, r.HSGUID, t.HTPNAME, r.HSBODY
+    select r.HSGUID, r.HSGUID, t.HTPNAME, r.HSBODY
       into :wSndRes
       from HBRESP r
-      join HBSTRANS t on t.HTGUID = r.HSTRGUID
+      join HBSTRANS t on t.HTGUID = r.HSGUID
       where r.HSGUID = :inGuid;
 
   if sqlstate = '02000';

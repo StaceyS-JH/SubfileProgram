@@ -877,8 +877,8 @@ end-pi;
   endif;
 
   exec sql
-    insert into HBRESP (HSGUID, HSTRGUID, HSATTMPT, HSHEADER, HSBODY)
-         values (:wActvtGUID, :wReqData.r_pguid, :pAttempt, :wHeadr, :SqlJSON);
+    insert into HBRESP (HSGUID, HSATTMPT, HSHEADER, HSBODY)
+         values (:wReqData.r_pguid, :pAttempt, :wHeadr, :SqlJSON);
 
   if SQLstate = '00000';
 
@@ -889,7 +889,7 @@ end-pi;
       // update data queue with GUID
       if wReqCtx.IsPush = *off or
         (wReqCtx.IsPush = *on and wSndStat <> 'E');
-        WrtDtaq(wReqCtx.SndDtaq:wActvtGUID);
+        WrtDtaq(wReqCtx.SndDtaq:wReqData.r_pguid);
       endif;
     else;
       // Update test trans with X
