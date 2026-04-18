@@ -101,4 +101,4 @@ dcl-proc Main;
 
   *inlr = *on;
 
-Pend-proc Main;
+end-proc;

@@ -10,6 +10,12 @@
 
 The original bug: HBSCHPC ran with `ACTGRP(*CALLER)`, meaning every host service program called through it joined the **handler's** activation group. Static storage from each distinct host service type accumulated permanently in the handler's AG for the lifetime of the handler job. This caused unbounded memory growth in long-running handler jobs.
 
+**Why host service programs don't set `*INLR = *on`:**  
+This was intentional. With `ACTGRP(*CALLER)`, not setting `*INLR` keeps the program "warm" in the handler's AG between calls — files stay open, static storage persists, and the next call to the same service skips re-initialization. A deliberate performance optimization. The downside is that it's also the mechanism that caused the accumulation bug: every distinct host service type loaded its storage permanently into the handler's AG because nothing ever triggered RPG cleanup.
+
+**Why host service programs don’t set `*INLR = *on`:**  
+This was intentional. With `ACTGRP(*CALLER)`, not setting `*INLR` keeps the program “warm” in the handler’s AG between calls — files stay open, static storage persists, and the next call to the same service skips re-initialization. A deliberate performance optimization. The downside is that this same persistence is the mechanism behind the accumulation bug: every distinct host service type loaded its storage permanently into the handler’s AG, because nothing ever triggered RPG cleanup.
+
 ---
 
 ## Option 1 — Current Fix (Minimal Change)
@@ -25,10 +31,12 @@ The original bug: HBSCHPC ran with `ACTGRP(*CALLER)`, meaning every host service
 HBSCHPC now creates and destroys its own AG on every call. Host service programs join HBSCHPC's AG, which is torn down on return. The handler's AG remains flat.
 
 **Memory profile:**  
-Flat handler AG. Per-transaction allocate/free cycle in HBSCHPC's AG. No accumulation.
+Flat handler AG. Per-transaction allocate/free cycle in HBSCHPC's AG. No accumulation.  
+F-spec files open and close on every call — the AG teardown forces cleanup regardless of `*INLR`. The warm-file optimization of the original design is gone.
 
 **Performance:**  
-Two AG lifecycle events per transaction (HBSCHPC + host service). CL program activation + dynamic `CALL PGM()` dispatch overhead on every transaction.
+Two AG lifecycle events per transaction (HBSCHPC + host service). CL program activation + dynamic `CALL PGM()` dispatch overhead on every transaction.  
+F-spec files open and close on every call — the AG teardown forces cleanup regardless of `*INLR`. The warm-file optimization of the original design is gone.
 
 **Live recompile pickup:**  
 Yes — `CALL PGM(&HOSTPGM)` resolves at call time. Recompiled host service is picked up immediately on the next transaction.
@@ -68,11 +76,13 @@ end-pr;
 
 Each host service runs in its own `*NEW` AG, created and destroyed on each call. Handler AG stays flat.
 
-**Memory profile:**  
+**Memory profile:**    
+F-spec files open and close on every call — same cost as Option 1, just one fewer AG event. `*INLR = *on` should be set explicitly in host service programs; the AG teardown forces file closure regardless, but not setting it is sloppy and can leave activity log entries.
 Flat handler AG. Per-transaction allocate/free in each host service's AG. No accumulation.
 
 **Performance:**  
-One AG lifecycle event per transaction (host service only — HBSCHPC eliminated). Dynamic `*PGM` call overhead still applies.
+One AG lifecycle event per transaction (host service only — HBSCHPC eliminated). Dynamic `*PGM` call overhead still applies.  
+F-spec files open and close on every call — same cost as Option 1, just one fewer AG event. `*INLR = *on` should be set explicitly in host service programs; the AG teardown forces file closure regardless, but not setting it is sloppy practice.
 
 **Live recompile pickup:**  
 Yes — `Extpgm(gSrvcNam)` resolves against the library list at call time.
@@ -155,12 +165,14 @@ CallService(pParms : pResp : W_Service : W_Version);
 ```
 
 **Memory profile:**  
-Flat handler AG. Each distinct service program's AG created **once** on first encounter, resident for handler job lifetime. Total footprint = (distinct service programs encountered) × (their static storage). Bounded and predictable regardless of transaction volume.
+Flat handler AG. Each distinct service program's AG created **once*  
+F-spec files stay **open** for the life of the handler job — the warm-file behavior of the original design is restored correctly. `*INLR` is irrelevant in `nomain` service program modules. SQL cursors with `CloSqlCsr(*EndMod)` also remain open since the module never deactivates; cursors over tables that change between transactions should be explicitly opened and closed within each procedure call rather than relying on module-level cursor lifetime.* on first encounter, resident for handler job lifetime. Total footprint = (distinct service programs encountered) × (their static storage). Bounded and predictable regardless of transaction volume.
 
 **Performance:**  
 First call to each service type: `QleActBndPgm` + `QleGetExp` + bound call.  
 Subsequent calls: one array scan + bound call. No AG lifecycle overhead, no dynamic program resolution.  
-Fastest option by a significant margin at high transaction volumes.
+Fastest option by a significant margin at high transaction volumes.  
+F-spec files stay **open** for the life of the handler job — the warm-file behavior of the original design is restored correctly. `*INLR` is irrelevant in `nomain` service program modules. SQL cursors with `CloSqlCsr(*EndMod)` also remain open since the module never deactivates; cursors over tables that change between transactions should be explicitly opened and closed within each procedure call rather than relying on module-level cursor lifetime.
 
 **Live recompile pickup:**  
 **No** — cached procedure pointer references the activated version at time of first call. Handler job must be restarted, or cache must be explicitly cleared, to pick up a recompiled service program.
@@ -209,12 +221,18 @@ A handler that only processes a subset of transaction types only loads the relev
 
 ## Comparison Summary
 
-| Factor | Option 1: HBSCHPC `*NEW` | Option 2: Direct `*PGM *NEW` | Option 3: `*SRVPGM` + Proc Ptr |
-|---|---|---|---|
-| Handler AG | Flat ✓ | Flat ✓ | Flat ✓ |
+| File opens per transaction | Every call | Every call | First call only (warm) |
+| `*INLR` in host services | Irrelevant (AG teardown forces close) | Should be set; AG teardown forces close | Irrelevant (`nomain` module) |
+| SQL cursor lifetime | Closed each call | Closed each call | Stays open — manage explicitly per transaction |
+| Live recompile pickup | Yes ✓ | Yes ✓ | No — requires cache clear |
+| HBSCHPC required | Yes | No | No |
+| Host service changes | None | `*NEW` + set `*INLR`
 | Memory per transaction | Allocate/free | Allocate/free | Zero (resident) |
 | Memory footprint | Bounded | Bounded | Bounded |
 | Per-call overhead | 2 AG events | 1 AG event | ~0 after first call |
+| File opens per transaction | Every call | Every call | First call only (warm) |
+| `*INLR` in host services | Irrelevant (AG teardown forces close) | Should be set; AG teardown forces close | Irrelevant (`nomain` module) |
+| SQL cursor lifetime | Closed each call | Closed each call | Stays open — manage explicitly per transaction |
 | Live recompile pickup | Yes ✓ | Yes ✓ | No — requires cache clear |
 | HBSCHPC required | Yes | No | No |
 | Host service changes | None | `*NEW` on all | Convert to `*SRVPGM *NEW` |

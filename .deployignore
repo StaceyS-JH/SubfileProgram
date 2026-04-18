@@ -1,0 +1,12 @@
+# Exclude everything except src/
+docs/
+tools/
+.git/
+.github/
+.venv/
+.vscode/
+*.py
+*.md
+*.ini
+.vscodeignore
+.deployignore
