@@ -44,9 +44,7 @@ dcl-ds dsLogMsg qualified;
   lm_UsName  char(10);      // User Space object name (max 10 chars)
   lm_UsLib   char(10);      // User Space library
   lm_BodyLen int(10);       // Byte length of JSON body stored in User Space
-  lm_Attmpt  packed(3:0);   // Attempt number (RESP only; 0 for REQ)
-  lm_HdrLen  int(10);       // Byte length of valid data in lm_Header
-  lm_Header  char(1024);    // HTTP header text
+  lm_Attmpt  packed(3:0);   // Reserved - not used (attempt tracked in HBSTRANS.HTATTEMPTS)
 end-ds;
 
 //--------------------------------------------------------------
@@ -167,7 +165,6 @@ dcl-s w_usQual  char(20);
 dcl-s w_bodyPtr pointer;
 dcl-s w_bodyRaw char(2000000) based(w_bodyPtr);
 dcl-s w_body    sqltype(CLOB:2000000);
-dcl-s w_header  varchar(1024);
 
 w_usQual = p_msg.lm_UsName + p_msg.lm_UsLib;
 clear dsApiErr;
@@ -179,13 +176,10 @@ endif;
 
 w_body_len  = p_msg.lm_BodyLen;
 w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
-if p_msg.lm_HdrLen > 0;
-  w_header = %subst(p_msg.lm_Header: 1: p_msg.lm_HdrLen);
-endif;
 
 exec sql
-  insert into HBSREQ (HRGUID, HRHEADER, HRBODY)
-  values (:p_msg.lm_Guid, :w_header, :w_body);
+  insert into HBSREQ (HRGUID, HRBODY)
+  values (:p_msg.lm_Guid, :w_body);
 
 if sqlstate <> '00000';
   hbstools_CommLog(660005: 'HBSWRITER WriteReq: insert failed SQLSTATE=' + sqlstate
@@ -208,7 +202,6 @@ dcl-s w_usQual  char(20);
 dcl-s w_bodyPtr pointer;
 dcl-s w_bodyRaw char(2000000) based(w_bodyPtr);
 dcl-s w_body    sqltype(CLOB:2000000);
-dcl-s w_header  varchar(1024);
 
 w_usQual = p_msg.lm_UsName + p_msg.lm_UsLib;
 clear dsApiErr;
@@ -220,13 +213,10 @@ endif;
 
 w_body_len  = p_msg.lm_BodyLen;
 w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
-if p_msg.lm_HdrLen > 0;
-  w_header = %subst(p_msg.lm_Header: 1: p_msg.lm_HdrLen);
-endif;
 
 exec sql
-  insert into HBRESP (HSGUID, HSATTMPT, HSHEADER, HSBODY)
-  values (:p_msg.lm_Guid, :p_msg.lm_Attmpt, :w_header, :w_body);
+  insert into HBRESP (HSGUID, HSBODY)
+  values (:p_msg.lm_Guid, :w_body);
 
 if sqlstate <> '00000';
   hbstools_CommLog(660005: 'HBSWRITER WriteResp: insert failed SQLSTATE=' + sqlstate

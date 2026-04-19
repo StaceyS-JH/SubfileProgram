@@ -13,6 +13,8 @@ CREATE OR REPLACE TABLE HBSTRANS (
     HTRCVSTS        CHAR(1)       NOT NULL,       -- Receive Status (P:Processing, C:Complete, E:Error, N:N/A)
     HTSNDSTS        CHAR(1)       NOT NULL,       -- Send Status (P:Processing, C:Complete, E:Error, N:N/A)
     HTATTEMPTS      SMALLINT      DEFAULT 0,      -- Retry attempts for sending a response
+    HTRQHEADER      VARCHAR(1024),                -- Inbound HTTP request header
+    HTSNDHEADER     VARCHAR(1024),                -- Outbound HTTP response header
     HTADDTS         TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Row add timestamp
     HTMNTTS         TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Row maintenance timestamp
 

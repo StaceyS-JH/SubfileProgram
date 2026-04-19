@@ -46,9 +46,7 @@ dcl-ds dsLogMsg qualified;
   lm_UsName  char(10);
   lm_UsLib   char(10);
   lm_BodyLen int(10);
-  lm_Attmpt  packed(3:0);
-  lm_HdrLen  int(10);
-  lm_Header  char(1024);
+  lm_Attmpt  packed(3:0);   // Reserved
 end-ds;
 
 //--------------------------------------------------------------
@@ -128,9 +126,9 @@ if not hbstools_ChkDtaq(w_dtaqlib: 'HBSLOGDQ');
 endif;
 
 //--------------------------------------------------------------
-// Generate GUID and build test payloads
+// Generate GUID using QSYS2.UUID_CHAR() (v4 random) and build test payloads
 //--------------------------------------------------------------
-w_guid = hbstools_CrtGUID();
+exec sql VALUES QSYS2.UUID_CHAR() INTO :w_guid;
 
 w_reqJson  = '{"ActivityId":"' + w_guid + '",' +
              '"ParentActivityId":"00000000-0000-0000-0000-000000000000",' +
@@ -154,11 +152,13 @@ hbstools_CommLog(660001: 'TSTHBSWRTR: Starting test with GUID=' + w_guid);
 //--------------------------------------------------------------
 exec sql
   insert into HBSTRANS
-    (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS)
+    (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS,
+     HTRQHEADER, HTSNDHEADER)
   values (:w_guid,
           '00000000-0000-0000-0000-000000000000',
           :w_guid,
-          'RQ', 'R', 'N');
+          'RQ', 'R', 'N',
+          :w_reqHdr, :w_respHdr);
 
 if sqlstate <> '00000';
   hbstools_CommLog(660005: 'TSTHBSWRTR: HBSTRANS insert failed SQLSTATE=' + sqlstate);
@@ -200,9 +200,6 @@ dsLogMsg.lm_Guid    = w_guid;
 dsLogMsg.lm_UsName  = w_usName;
 dsLogMsg.lm_UsLib   = w_dtaqlib;
 dsLogMsg.lm_BodyLen = %len(w_reqJson);
-dsLogMsg.lm_Attmpt  = 0;
-dsLogMsg.lm_HdrLen  = %len(w_reqHdr);
-dsLogMsg.lm_Header  = w_reqHdr;
 
 QSNDDTAQ('HBSLOGDQ  ': w_dtaqlib: w_msgLen: dsLogMsg);
 
@@ -240,9 +237,6 @@ dsLogMsg.lm_Guid    = w_guid;
 dsLogMsg.lm_UsName  = w_usName;
 dsLogMsg.lm_UsLib   = w_dtaqlib;
 dsLogMsg.lm_BodyLen = %len(w_respJson);
-dsLogMsg.lm_Attmpt  = 1;
-dsLogMsg.lm_HdrLen  = %len(w_respHdr);
-dsLogMsg.lm_Header  = w_respHdr;
 
 QSNDDTAQ('HBSLOGDQ  ': w_dtaqlib: w_msgLen: dsLogMsg);
 

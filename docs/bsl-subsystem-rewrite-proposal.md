@@ -47,7 +47,7 @@ Three distinct GUIDs are used per transaction:
 
 | Field | Value | Source |
 |---|---|---|
-| `HBSTRANS.HTGUID` | Locally generated (`w_guid2 = hbstools_CrtGUID()`) | `HBSCHILD1.WriteRecv` |
+| `HBSTRANS.HTGUID` | Locally generated (`exec sql VALUES QSYS2.UUID_CHAR() INTO :w_guid2`) | `HBSCHILD1.WriteRecv` |
 | `HBSTRANS.HTRQAGUID` | JSON `ActivityId` (`w_guid`) | Parsed from inbound request |
 | `HBSTRANS.HTRQPGUID` | JSON `ParentActivityId` (`w_pguid`) | Parsed from inbound request |
 
@@ -105,11 +105,61 @@ The single GUID value serves as the correlation key through the entire chain —
 To resolve I/O bottlenecks, we will implement a unified asynchronous logging mechanism.
 
 *   **Persistent Writer Job (`HBSWRITER`):** A single, long-running RPGLE program that waits on a data queue (`HBSLOGDQ`) to receive work.
-*   **In-Memory Data Transfer (User Spaces):** Large JSON payloads will be written to temporary User Space (`*USRSPC`) objects. A unique 10-character name is generated for each using a 2-character type prefix combined with the first 8 characters of the transaction GUID:
+*   **In-Memory Data Transfer (User Spaces):** Large JSON payloads will be written to temporary User Space (`*USRSPC`) objects. A unique 10-character name is generated for each using a 2-character type prefix combined with the first 8 characters of `HTGUID`:
     *   `RQ` + first 8 chars of `HTGUID` — for request payloads (created by `HBSCHILD1`)
     *   `RS` + first 8 chars of `HTGUID` — for response payloads (created by `HBSHANDLR`)
-    *   Example: GUID `a3f8c201-...` → `RQa3f8c201` / `RSa3f8c201`
-    *   This makes each name directly traceable back to its `HBSTRANS` row and guarantees uniqueness because the GUID is unique per transaction. User Spaces are created in the library identified by `d_BankLib` from the `HBSSBSCTL` data area (the same library used for all subsystem data queues), **not** in `QTEMP`, since `HBSWRITER` runs as a separate job and cannot access the creating job's `QTEMP`.
+    *   Example: `HTGUID` = `4c89cc10-...` → User Space names `RQ4c89cc10` / `RS4c89cc10`
+    *   The User Space name is directly reconstructable from `HBSTRANS.HTGUID` at any point, making orphan detection trivial. User Spaces are created in the library identified by `d_BankLib` from the `HBSSBSCTL` data area (the same library used for all subsystem data queues), **not** in `QTEMP`, since `HBSWRITER` runs as a separate job and cannot access the creating job's `QTEMP`.
+
+*   **UUID Source — `QSYS2.UUID_CHAR()` (v4):** `HTGUID` is generated using `QSYS2.UUID_CHAR()`, which produces a **version 4 (random)** UUID per RFC 4122. This replaces the prior use of `hbstools_CrtGUID()` (v1, time-based). The GUID serves as a random identity key only — sequencing is handled by the row timestamp, so there is no need for a time-ordered UUID.
+
+    | Property | `hbstools_CrtGUID()` (v1) — old | `QSYS2.UUID_CHAR()` (v4) — new |
+    |---|---|---|
+    | Algorithm | 100ns clock + MAC address | Cryptographically random |
+    | First 8 chars (`time_low`) | Sequential — increments every 100ns | 32 bits of independent entropy |
+    | Uniqueness guarantee | Clock-based; `time_low` wraps every **429 seconds** | Statistical — no cyclic wrap |
+    | Risk for User Space names | Two transactions 429 s apart share the same `time_low`; if a prior User Space was not cleaned up, `QUSCRTUS` with `*NO` would fail | No sequential dependency |
+    | One call, one value | Requires separate call for naming GUID | Single `HTGUID` value serves both `HBSTRANS` insert and User Space name |
+
+    **Collision probability with v4 (birthday paradox + retry):**
+
+    The first 8 hex characters represent 32 bits of randomness → 4,294,967,296 (≈ 4.3 billion) distinct values. The probability that a single new User Space name collides with one of the *n* currently live spaces is:
+
+    $$P_\text{single}(n) = \frac{n}{2^{32}}$$
+
+    With *k* retries (each generating a fresh UUID independently), the probability that **all** attempts fail is:
+
+    $$P_\text{fail}(n, k) = \left(\frac{n}{2^{32}}\right)^{k+1}$$
+
+    | Concurrent live User Spaces | No retry | After 1 retry | After 2 retries | After 3 retries |
+    |---|---|---|---|---|
+    | 100 | 2.3 × 10⁻⁸ | 5.4 × 10⁻¹⁶ | 1.3 × 10⁻²³ | ~0 |
+    | 1,000 | 2.3 × 10⁻⁷ | 5.4 × 10⁻¹⁴ | 1.3 × 10⁻²⁰ | ~0 |
+    | 10,000 | 2.3 × 10⁻⁶ | 5.4 × 10⁻¹² | 1.3 × 10⁻¹⁷ | ~0 |
+    | 65,536 | 1.5 × 10⁻⁵ | 2.3 × 10⁻¹⁰ | 3.6 × 10⁻¹⁵ | 5.4 × 10⁻²⁰ |
+
+    Even with zero retries at 1,000 concurrent spaces the chance of failure is 1 in 4.3 million. After one retry it drops to 1 in 18 trillion. Three retries renders the failure probability computationally indistinguishable from zero at all realistic BSL load levels.
+
+*   **User Space Creation — Optimistic Retry Pattern:** `QUSCRTUS` is called with `Replace = '*NO'`. Rather than pre-checking for an existing object (which would pay an API cost on every transaction for an event that statistically never occurs), the caller uses an optimistic retry loop: attempt creation, inspect `dsApiErr.MsgId` on failure, and if `CPF9870` (object already exists) is returned, regenerate the GUID and retry up to 3 times. Any other error code is treated as a hard failure and logged. This costs nothing on the 99.99988% of calls where there is no collision, and makes the code provably correct rather than relying solely on probability.
+
+    ```rpgle
+    dow rtyCount < 3;
+      exec sql VALUES QSYS2.UUID_CHAR() INTO :w_GUID2;
+      w_usName = 'RQ' + %subst(w_GUID2: 1: 8);
+      clear dsApiErr;
+      QUSCRTUS(w_usName + w_dtaqlib :'HBSJSON   ':bodyLen:x'00'
+              :'*CHANGE   ':'HBSCHILD1 REQ payload    ':'*NO       ':dsApiErr);
+      if dsApiErr.BytesAvl = 0;
+        leave;                        // success
+      elseif %subst(dsApiErr.MsgId:1:7) = 'CPF9870';
+        rtyCount += 1;                // collision — retry with new UUID
+      else;
+        hbstools_CommLog(660005:'QUSCRTUS failed ' + dsApiErr.MsgId);
+        return *off;
+      endif;
+    enddo;
+    ```
+
 *   **Communication (Data Queues):** A single, permanent Data Queue (`HBSLOGDQ`) will act as the work queue. Messages will contain the User Space name, its library, and the transaction GUID.
 *   **Logging Control File (`HBSLOGCTL`):** A new configuration file will allow logging to be toggled on or off for each service.
 

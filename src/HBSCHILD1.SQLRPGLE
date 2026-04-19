@@ -1116,7 +1116,7 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
            Endif;
 
            // Generate local host GUID - this is the primary key in HBSTRANS
-           w_GUID2 = hbstools_CrtGUID();
+           exec sql VALUES QSYS2.UUID_CHAR() INTO :w_GUID2;
 
            // Write master transaction record to HBSTRANS
            Exec SQL

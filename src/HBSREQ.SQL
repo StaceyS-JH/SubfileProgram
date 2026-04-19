@@ -3,7 +3,6 @@
 -- =================================================================
 CREATE OR REPLACE TABLE HBSREQ (
     HRGUID          CHAR(36)      NOT NULL,       -- Logical link to HBSTRANS.HTGUID
-    HRHEADER        VARCHAR(1024),                -- Full inbound HTTP header
     HRBODY          CLOB(16M),                    -- Inbound JSON payload
 
     PRIMARY KEY(HRGUID)
