@@ -143,7 +143,7 @@
 
        reset dsResJSON;
 
-       MoreInfoInit();
+       //MoreInfoInit();
 23003  clear RtnOpts;
 
 23003  if Service = *blanks;
@@ -258,30 +258,30 @@
 
        outPtr = %addr(dsResponse);
 
-       AddMoreInfo('Request');
-       AddMoreInfo(dsRequest.clob);
-       AddMoreInfo('Response');
-       AddMoreInfo(dsResponse.clob);
+       //AddMoreInfo('Request');
+       //AddMoreInfo(dsRequest.clob);
+       //AddMoreInfo('Response');
+       //AddMoreInfo(dsResponse.clob);
 
 
 
        //    swap the parent and activity ID
 23001  //CrtLogEvent('INFO'
-23001  CrtLogEvent('LOGALWAYS'
+23001  //CrtLogEvent('LOGALWAYS'
 23001  //       :dsRequest.AGUID
 23001  //       :dsRequest.PGUID
-23001           :dsRequest.PGUID
-23001           :*omit
-23001           :dsReqJSON.ActivityTracking.ParentActivityId
-23001           :dsReqJSON.ActivityTracking.ActivityId
-                :'RETAIL'
-                : d_FiNum+'00000000'
-                :*OMIT
+23001  //         :dsRequest.PGUID
+23001  //         :*omit
+23001  //         :dsReqJSON.ActivityTracking.ParentActivityId
+23001  //         :dsReqJSON.ActivityTracking.ActivityId
+               //  :'RETAIL'
+               //  : d_FiNum+'00000000'
+               //  :*OMIT
 23003  //       :'Host received SubsystemHealthCheck'
-23003           :'Host received '+ %trim(myService)
-                :MoreInfoAry
-                :MoreInfoNum
-         );
+23003  //         :'Host received '+ %trim(myService)
+               //  :MoreInfoAry
+               //  :MoreInfoNum
+         //  );
        end-proc;
 
       //---------------------------------------------------------

@@ -1124,11 +1124,23 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
               (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS)
                values (:w_guid2, :w_pguid, :w_guid, 'RQ', :w_stat, 'N');
 
+           if sqlstate <> '00000';
+             hbstools_CommLog(660005:'HBSTRANS insert failed SQLSTATE=' + sqlstate
+                                    + ' GUID=' + w_guid2);
+             return *off;
+           endif;
+
            // Write request header and body to HBSREQ
            Exec SQL
              insert into HBSREQ
               (HRGUID, HRHEADER, HRBODY)
                values (:w_guid2, :prmhead, :prmjson);
+
+           if sqlstate <> '00000';
+             hbstools_CommLog(660005:'HBSREQ insert failed SQLSTATE=' + sqlstate
+                                    + ' GUID=' + w_guid2);
+             return *off;
+           endif;
 
           // Write to receive dataq for handler - use w_guid2 (local GUID) as queue entry
               %subst(w_qdata:1:36) = w_guid2;

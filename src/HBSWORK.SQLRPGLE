@@ -52,7 +52,7 @@ dcl-pi *n int(10);
   pWorkType char(2) const;
   pInGuid char(36) const;
   pVersion likeds(dsVersion);
-  pReceiveData pointer;
+  pReceiveData pointer value;
 end-pi;
 
   dcl-ds pRecvData likeds(RecvDta) based(pReceiveData);
@@ -145,12 +145,13 @@ end-pi;
 
   outData.r_pguid = wr_pguid;
   outData.r_aguid = wr_aguid;
-  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
-  // if clob field is empty, no JSON request
+  // if clob field is empty or pointer not set, no JSON request
   if wr_sql_clob_len <= 0;
     return 550015;
   endif;
+
+  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
   // Find service info from in-memory cache (avoids per-request join)
   if gSRMapIndx <= 0;
@@ -235,12 +236,13 @@ end-pi;
 
   outData.r_pguid = wr_pguid;
   outData.r_aguid = wr_aguid;
-  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
-  // if clob field is empty, no JSON request
+  // if clob field is empty or pointer not set, no JSON request
   if wr_sql_clob_len <= 0;
     return 550015;
   endif;
+
+  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
   // Find service name from JSON request header
   wRc = FindSrvc(wr_header
@@ -478,15 +480,16 @@ end-pi;
 
   outData.r_pguid = wr_pguid;
   outData.r_aguid = wr_aguid;
-  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
   // The service name is in the header
   wSrvcNam = %trim(wr_header);
 
-  // if clob field is empty, no JSON request
+  // if clob field is empty or pointer not set, no JSON request
   if wr_sql_clob_len <= 0;
     return 550015;
   endif;
+
+  outData.r_clob  = %subst(wr_sql_clob_data:1:wr_sql_clob_len);
 
   outVersion.SrvcName = wSrvcNam;
   if GetHostSrvc(outVersion) <> 0;
@@ -542,15 +545,16 @@ end-pi;
 
   outData.r_pguid = ci_pguid;
   outData.r_aguid = ci_aguid;
-  outData.r_clob  = %subst(ci_sql_clob_data:1:ci_sql_clob_len);
 
   // The service name is in the CI record
   wSrvcNam = %trim(ci_service);
 
-  // if clob field is empty, no JSON request
+  // if clob field is empty or pointer not set, no JSON request
   if ci_sql_clob_len <= 0;
     return 550015;
   endif;
+
+  outData.r_clob  = %subst(ci_sql_clob_data:1:ci_sql_clob_len);
 
   outVersion.SrvcName = wSrvcNam;
   if GetHostSrvc(outVersion) <> 0;
