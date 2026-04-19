@@ -94,6 +94,8 @@ The single GUID value serves as the correlation key through the entire chain —
 | `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQ`; `ReadSQL` → `HBRESP`; `UpdtStat` uses `r_trguid`; `GetReqFiNum` proc restored; SQL Set Option block added |
 | `HBSHS003.SQLRPGLE` | Program | Copied from member; updated to `inPtr`/`outPtr` pattern |
 
+> **Phase 2 Prerequisite — HBSWRITER:** `HBSWRITER.RPGLE` still contains a live `INSERT INTO HBSSEND` at approximately line 156. This must be rewritten to use `HBRESP` before Phase 2 work begins, as `HBSSEND` no longer exists in the new table structure.
+
 ---
 
 ## 4. Core Architectural Changes
@@ -103,7 +105,11 @@ The single GUID value serves as the correlation key through the entire chain —
 To resolve I/O bottlenecks, we will implement a unified asynchronous logging mechanism.
 
 *   **Persistent Writer Job (`HBSWRITER`):** A single, long-running RPGLE program that waits on a data queue (`HBSLOGDQ`) to receive work.
-*   **In-Memory Data Transfer (User Spaces):** Large JSON payloads will be written to temporary User Space (`*USRSPC`) objects. A unique 10-character name will be generated for each.
+*   **In-Memory Data Transfer (User Spaces):** Large JSON payloads will be written to temporary User Space (`*USRSPC`) objects. A unique 10-character name is generated for each using a 2-character type prefix combined with the first 8 characters of the transaction GUID:
+    *   `RQ` + first 8 chars of `HTGUID` — for request payloads (created by `HBSCHILD1`)
+    *   `RS` + first 8 chars of `HTGUID` — for response payloads (created by `HBSHANDLR`)
+    *   Example: GUID `a3f8c201-...` → `RQa3f8c201` / `RSa3f8c201`
+    *   This makes each name directly traceable back to its `HBSTRANS` row and guarantees uniqueness because the GUID is unique per transaction. User Spaces are created in the library identified by `d_BankLib` from the `HBSSBSCTL` data area (the same library used for all subsystem data queues), **not** in `QTEMP`, since `HBSWRITER` runs as a separate job and cannot access the creating job's `QTEMP`.
 *   **Communication (Data Queues):** A single, permanent Data Queue (`HBSLOGDQ`) will act as the work queue. Messages will contain the User Space name, its library, and the transaction GUID.
 *   **Logging Control File (`HBSLOGCTL`):** A new configuration file will allow logging to be toggled on or off for each service.
 

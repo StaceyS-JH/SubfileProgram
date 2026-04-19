@@ -1,214 +1,255 @@
-     H/TITLE HBSWRITER - Asynchronous Logger for BSL Subsystem
-     H DFTACTGRP(*NO) ACTGRP(*NEW) OPTION(*SRCSTMT : *NODEBUGIO)
-     H BNDDIR('JHBIND')
+**free
+//--------------------------------------------------------------
+// HBSWRITER - Asynchronous BSL Log Writer
+//--------------------------------------------------------------
+// Persistent background job. Blocks on HBSLOGDQ data queue,
+// retrieves JSON payloads from User Spaces, and writes to
+// HBSREQ or HBRESP. Deletes the User Space after each write.
+//
+// Send message type 'END ' to HBSLOGDQ to terminate gracefully.
+//
+// DQ message layout is defined by dsLogMsg below. Senders
+// (HBSCHILD1 for REQ, HBSHANDLR for RESP) must use the same DS.
+//--------------------------------------------------------------
+ctl-opt dftactgrp(*no) actgrp('HBSWRITER')
+        option(*srcstmt: *nodebugio)
+        bnddir('JHBIND');
 
-      *----------------------------------------------------------------
-      * Program Summary
-      *----------------------------------------------------------------
-      * This program is submitted as a background job to handle the
-      * database logging for HBSRECV and HBSSEND tables. It reads
-      * data from a User Space and writes it to the appropriate table,
-      * decoupling the logging process from the main transaction path.
-      *
-      * Parameters:
-      *   1. P_GUID (36A): The unique GUID for the transaction. This is
-      *      used to locate the User Space and Data Area.
-      *   2. P_LOGTYPE (10A): The type of log to perform.
-      *      - 'RECV': Write to HBSRECV table.
-      *      - 'SEND': Write to HBSSEND table.
-      *----------------------------------------------------------------
+// 04/19/26 #1184229 S Smith - Rewrite: HBSRECV/HBSSEND to HBSREQ/HBRESP
+//                             Persistent DQ listener replacing submitted job
 
-      *----------------------------------------------------------------
-      * File Definitions
-      *----------------------------------------------------------------
-     FHBSRECV   IF   E           K DISK
-     FHBSSEND   IF   E           K DISK
+/define HBSTOOLS_psds
+/include qcpysrc,hbstools
+/undefine HBSTOOLS_psds
+/define HBSSBSCTL
+/include qcpysrc,hbsstand
+/undefine HBSSBSCTL
 
-      *----------------------------------------------------------------
-      * API Error Data Structure
-      *----------------------------------------------------------------
-     D ApiError        DS
-     D  AeBytesPrv                   10I 0 INZ(%SIZE(ApiError))
-     D  AeBytesAvl                   10I 0
-     D  AeMsgId                       7A
-     D                                1A
-     D  AeMsgDta                    256A
+//--------------------------------------------------------------
+// SQL options
+//--------------------------------------------------------------
+exec sql
+  Set Option
+    Commit    = *None,
+    CloSqlCsr = *EndMod,
+    DatFmt    = *ISO;
 
-      *----------------------------------------------------------------
-      * Standalone Fields
-      *----------------------------------------------------------------
-     D p_Guid          S             36A
-     D p_LogType       S             10A
+//--------------------------------------------------------------
+// Data Queue Message Structure
+// All senders must use this identical layout.
+//--------------------------------------------------------------
+dcl-ds dsLogMsg qualified;
+  lm_Type    char(4);       // 'REQ ' - request, 'RESP' - response, 'END ' - terminate
+  lm_Guid    char(36);      // HTGUID (primary correlation key)
+  lm_UsName  char(10);      // User Space object name (max 10 chars)
+  lm_UsLib   char(10);      // User Space library
+  lm_BodyLen int(10);       // Byte length of JSON body stored in User Space
+  lm_Attmpt  packed(3:0);   // Attempt number (RESP only; 0 for REQ)
+  lm_HdrLen  int(10);       // Byte length of valid data in lm_Header
+  lm_Header  char(1024);    // HTTP header text
+end-ds;
 
-     D UserSpaceName   S             20A
-     D DataAreaName    S             20A
-     D DataAreaValue   S              3P 0
-     D SpcPtr          S               *
-     D JsonData        S         2000000A   VARYING BASED(SpcPtr)
-     D JsonDataLen     S             10I 0
+//--------------------------------------------------------------
+// API Error DS
+//--------------------------------------------------------------
+dcl-ds dsApiErr qualified;
+  BytesPrv  int(10) inz(%size(dsApiErr));
+  BytesAvl  int(10);
+  MsgId     char(7);
+            char(1);
+  MsgDta    char(256);
+end-ds;
 
-     D qcmd            S            512A
-     D qcmdln          S             15P 5
+//--------------------------------------------------------------
+// User Space API Prototypes
+//--------------------------------------------------------------
+dcl-pr QUSPTRUS extpgm('QUSPTRUS');
+  QualName  char(20) const;
+  SpacePtr  pointer;
+  ErrCode   likeds(dsApiErr);
+end-pr;
 
-      *----------------------------------------------------------------
-      * User Space API Prototypes
-      *----------------------------------------------------------------
-     D QUSPTRUS        PR                  ExtPgm('QUSPTRUS')
-     D  usName                       20A   Const
-     D  usPtr                          *
-     D  usError                        *   OPTIONS(*OMIT)
+dcl-pr QUSDLUS extpgm('QUSDLUS');
+  QualName  char(20) const;
+  ErrCode   likeds(dsApiErr);
+end-pr;
 
-     D QUSDLTUS        PR                  ExtPgm('QUSDLTUS')
-     D  usName                       20A   Const
-     D  usError                        *   OPTIONS(*OMIT)
+//--------------------------------------------------------------
+// Forward procedure declarations
+//--------------------------------------------------------------
+dcl-pr ReadLogQue ind extproc(*dclcase);
+  p_msg  char(%size(dsLogMsg));
+end-pr;
 
-      *----------------------------------------------------------------
-      * Data Area API Prototypes
-      *----------------------------------------------------------------
-     D RtvDtaAra       PR                  ExtPgm('QWCRDTAA')
-     D  daValue                   32766A
-     D  daLen                        10I 0 Const
-     D  daQualName                   20A   Const
-     D  daStartPos                   10I 0 Const
-     D  daDataLen                    10I 0 Const
-     D  daError                    1024A
+dcl-pr WriteReq extproc(*dclcase);
+  p_msg  likeds(dsLogMsg) const;
+end-pr;
 
-     D ChgDtaAra       PR                  ExtPgm('QWCCDTAA')
-     D  daQualName                   20A   Const
-     D  daStartPos                   10I 0 Const
-     D  daDataLen                    10I 0 Const
-     D  daValue                   32766A   Const
-     D  daError                    1024A
+dcl-pr WriteResp extproc(*dclcase);
+  p_msg  likeds(dsLogMsg) const;
+end-pr;
 
-     D DltDtaAra       PR                  ExtPgm('QDLTDTAA')
-     D  daQualName                   20A   Const
-     D  daError                        *   OPTIONS(*OMIT)
+dcl-pr CleanupUs extproc(*dclcase);
+  p_qual char(20) const;
+end-pr;
 
-      *----------------------------------------------------------------
-      * QCMDEXC Prototype
-      *----------------------------------------------------------------
-     D cmdexc          PR                  ExtPgm('QCMDEXC')
-     D   cmdtxt                     512A   Const
-     D   cmdlngth                    15P 5 Const
+//--------------------------------------------------------------
+// Module-level working variables
+//--------------------------------------------------------------
+dcl-s w_end    ind   inz(*off);
+dcl-s w_msgraw char(%size(dsLogMsg));
+dcl-s w_dtaqlib char(10);
 
-      *----------------------------------------------------------------
-      * Entry Parameters
-      *----------------------------------------------------------------
-     C     *ENTRY        PLIST
-     C                   PARM                    p_Guid
-     C                   PARM                    p_LogType
+//--------------------------------------------------------------
+// Main processing loop
+//--------------------------------------------------------------
+// Read library from HBSSBSCTL data area
+dsHBSSBSCTL = hbstools_GetDataArea('HBSSBSCTL':'*LIBL');
+w_dtaqlib = d_BankLib;
 
-      /FREE
-        // Construct object names from GUID
-        UserSpaceName = %TRIM(p_Guid) + 'US';
-        DataAreaName  = %TRIM(p_Guid) + 'DA';
+dow not w_end;
 
-        // Get pointer to the User Space
-        QUSPTRUS(UserSpaceName : SpcPtr : ApiError);
-        IF (ApiError.AeBytesAvl > 0);
-          // Log error: Could not get pointer to user space
-          *INLR = *ON;
-          RETURN;
-        ENDIF;
+  if ReadLogQue(w_msgraw);
+    dsLogMsg = w_msgraw;
+    select;
+    when dsLogMsg.lm_Type = 'REQ ';
+      WriteReq(dsLogMsg);
+    when dsLogMsg.lm_Type = 'RESP';
+      WriteResp(dsLogMsg);
+    when dsLogMsg.lm_Type = 'END ';
+      w_end = *on;
+    endsl;
+  endif;
 
-        // Determine the length of the data in the user space
-        // (Assuming first 4 bytes of user space store the length)
-        JsonDataLen = %INT(%SUBST(JsonData:1:4));
+enddo;
 
-        // Write to the appropriate table
-        IF p_LogType = 'RECV';
-          WriteToHbsRecv();
-        ELSE;
-          WriteToHbsSend();
-        ENDIF;
+*inlr = *on;
+return;
 
-        // Signal completion and check for cleanup
-        SignalAndCleanup();
+//--------------------------------------------------------------
+// ReadLogQue - Block on HBSLOGDQ until a message arrives
+//--------------------------------------------------------------
+dcl-proc ReadLogQue;
+dcl-pi *n ind;
+  p_msg  char(%size(dsLogMsg));
+end-pi;
 
-        *INLR = *ON;
-        RETURN;
+dcl-s w_msglen int(10) inz(%size(dsLogMsg));
 
-       //----------------------------------------------------------------
-       // WriteToHbsRecv: Writes the JSON data to the HBSRECV table.
-       //----------------------------------------------------------------
-       BEGSR WriteToHbsRecv;
+exec sql
+  select cast(message_data as char(:w_msglen))
+  into :p_msg
+  from table(
+      qsys2.receive_data_queue(
+      data_queue         => 'HBSLOGDQ',
+      data_queue_library => :w_dtaqlib,
+      remove             => 'YES',
+      wait_time          => -1)) as dq
+  fetch first 1 row only;
 
-         MONITOR;
-           EXEC SQL
-             INSERT INTO HBSRECV (HRSTAT, HRACTVTID, HRRCVDTA)
-             VALUES ('N', :p_Guid,
-                     SQLTYPE(CLOB:2000000)
-                     %SUBST(JsonData:5:JsonDataLen));
+if sqlstate <> '00000' and sqlstate <> '01000';
+  return *off;
+endif;
 
-         ON-ERROR;
-           // Log SQL error
-         ENDMON;
+return *on;
 
-       ENDSR;
+end-proc;
 
-       //----------------------------------------------------------------
-       // WriteToHbsSend: Writes the JSON data to the HBSSEND table.
-       //----------------------------------------------------------------
-       BEGSR WriteToHbsSend;
+//--------------------------------------------------------------
+// WriteReq - Read User Space, insert request into HBSREQ
+//--------------------------------------------------------------
+dcl-proc WriteReq;
+dcl-pi *n;
+  p_msg  likeds(dsLogMsg) const;
+end-pi;
 
-         MONITOR;
-           EXEC SQL
-             INSERT INTO HBSSEND (HSSTAT, HSACTVTID, HSSNDDTA)
-             VALUES ('N', :p_Guid,
-                     SQLTYPE(CLOB:2000000)
-                     %SUBST(JsonData:5:JsonDataLen));
-         ON-ERROR;
-           // Log SQL error
-         ENDMON;
+dcl-s w_usQual  char(20);
+dcl-s w_bodyPtr pointer;
+dcl-s w_bodyRaw char(2000000) based(w_bodyPtr);
+dcl-s w_body    sqltype(CLOB:2000000);
+dcl-s w_header  varchar(1024);
 
-       ENDSR;
+w_usQual = p_msg.lm_UsName + p_msg.lm_UsLib;
+clear dsApiErr;
+QUSPTRUS(w_usQual: w_bodyPtr: dsApiErr);
+if dsApiErr.BytesAvl > 0;
+  hbstools_CommLog(660005: 'HBSWRITER WriteReq: QUSPTRUS failed for ' + w_usQual);
+  return;
+endif;
 
-       //----------------------------------------------------------------
-       // SignalAndCleanup: Increments the data area counter and
-       //                   deletes objects if this is the last job.
-       //----------------------------------------------------------------
-       BEGSR SignalAndCleanup;
+w_body_len  = p_msg.lm_BodyLen;
+w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
+if p_msg.lm_HdrLen > 0;
+  w_header = %subst(p_msg.lm_Header: 1: p_msg.lm_HdrLen);
+endif;
 
-         // Lock, retrieve, increment, and update the data area
-         DCL-S daValueNum 3P 0;
-         DCL-S daValueChar 3A;
+exec sql
+  insert into HBSREQ (HRGUID, HRHEADER, HRBODY)
+  values (:p_msg.lm_Guid, :w_header, :w_body);
 
-         MONITOR;
-           // Retrieve current value
-           RtvDtaAra(daValueChar : %SIZE(daValueChar) : DataAreaName :
-                     1 : %SIZE(daValueChar) : ApiError);
-           IF (ApiError.AeBytesAvl > 0);
-             // Log error and exit
-             LEAVESR;
-           ENDIF;
+if sqlstate <> '00000';
+  hbstools_CommLog(660005: 'HBSWRITER WriteReq: insert failed SQLSTATE=' + sqlstate
+                           + ' GUID=' + p_msg.lm_Guid);
+endif;
 
-           daValueNum = %DEC(daValueChar : 3 : 0);
-           daValueNum += 1;
-           daValueChar = %CHAR(daValueNum);
+CleanupUs(w_usQual);
 
-           // Change the value
-           ChgDtaAra(DataAreaName : 1 : %SIZE(daValueChar) :
-                     daValueChar : ApiError);
-           IF (ApiError.AeBytesAvl > 0);
-             // Log error and exit
-             LEAVESR;
-           ENDIF;
+end-proc;
 
-           // Check if we are the last one
-           IF daValueNum >= 2;
-             // Delete the User Space and Data Area
-             qcmd = 'DLTUSRSPC USRSPC(QTEMP/' + %TRIM(UserSpaceName) + ')';
-             qcmdln = %len(%trim(qcmd));
-             cmdexc(qcmd: qcmdln);
+//--------------------------------------------------------------
+// WriteResp - Read User Space, insert response into HBRESP
+//--------------------------------------------------------------
+dcl-proc WriteResp;
+dcl-pi *n;
+  p_msg  likeds(dsLogMsg) const;
+end-pi;
 
-             qcmd = 'DLTDTAARA DTAARA(QTEMP/' + %TRIM(DataAreaName) + ')';
-             qcmdln = %len(%trim(qcmd));
-             cmdexc(qcmd: qcmdln);
-           ENDIF;
+dcl-s w_usQual  char(20);
+dcl-s w_bodyPtr pointer;
+dcl-s w_bodyRaw char(2000000) based(w_bodyPtr);
+dcl-s w_body    sqltype(CLOB:2000000);
+dcl-s w_header  varchar(1024);
 
-         ON-ERROR;
-           // Log error
-         ENDMON;
+w_usQual = p_msg.lm_UsName + p_msg.lm_UsLib;
+clear dsApiErr;
+QUSPTRUS(w_usQual: w_bodyPtr: dsApiErr);
+if dsApiErr.BytesAvl > 0;
+  hbstools_CommLog(660005: 'HBSWRITER WriteResp: QUSPTRUS failed for ' + w_usQual);
+  return;
+endif;
 
-       ENDSR;
-      /END-FREE
+w_body_len  = p_msg.lm_BodyLen;
+w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
+if p_msg.lm_HdrLen > 0;
+  w_header = %subst(p_msg.lm_Header: 1: p_msg.lm_HdrLen);
+endif;
+
+exec sql
+  insert into HBRESP (HSGUID, HSATTMPT, HSHEADER, HSBODY)
+  values (:p_msg.lm_Guid, :p_msg.lm_Attmpt, :w_header, :w_body);
+
+if sqlstate <> '00000';
+  hbstools_CommLog(660005: 'HBSWRITER WriteResp: insert failed SQLSTATE=' + sqlstate
+                           + ' GUID=' + p_msg.lm_Guid);
+endif;
+
+CleanupUs(w_usQual);
+
+end-proc;
+
+//--------------------------------------------------------------
+// CleanupUs - Delete User Space after write
+//--------------------------------------------------------------
+dcl-proc CleanupUs;
+dcl-pi *n;
+  p_qual char(20) const;
+end-pi;
+
+clear dsApiErr;
+QUSDLUS(p_qual: dsApiErr);
+if dsApiErr.BytesAvl > 0;
+  hbstools_CommLog(660005: 'HBSWRITER CleanupUs: QUSDLUS failed for ' +
+                           %trimr(%subst(p_qual: 1: 10)));
+endif;
+
+end-proc;
