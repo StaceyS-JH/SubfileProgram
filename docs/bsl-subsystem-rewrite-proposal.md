@@ -21,6 +21,13 @@ The project will be implemented in two distinct phases to manage complexity and 
 2.  **Refactor Application:** Modify the application to write to the new tables synchronously. ✅ (`HBSHANDLR`, `HBSCHILD1`, `HBSWORK` all updated)
 3.  **Test & Deploy:** Validate and deploy the synchronous refactoring to establish a stable foundation.
 
+### Phase 1b: Logging & Observability Improvements ✅ Code-Complete
+These changes were applied alongside Phase 1 to bring the production member-tracked changes into the local codebase.
+
+1.  **ssp22 — GUID Logs to HBSLOGF:** Replaced all `hbstools_Actvty()` calls in `HBSHANDLR` with `hbstools_CrtLog(...:'Y')`. Log entries now go to the `HBSLOGF` table via the new `hbstools_CrtLog` API, which retrieves descriptions from `HBSLOGDSC` and populates `lotype`/`loinfo` correctly. ✅
+2.  **ssp21 — CrtLogEvent/AppErrLog per Service:** `HBSWORK.GetWorkData` now returns a full `likeds(dsVersion)` DS populated from `HBSVERSN` (via `HBSVERSNV1` view). `HBSHANDLR` extracts `CrtLogEvnt`, `AppErrLog`, `VersnActv`, and `RunAsTest` from the returned DS into module-level globals. `CallSrvc` passes `gCrtLogEvent` and `gAppErrLog` into `RtnOpts` positions 1 and 2 before calling `CallHostProgram`, allowing per-service control of logging behaviour. ✅
+3.  **ssp20 — Remove HBSPATH:** `HBSHANDLR.LoadPath` cursor changed from `select * from HBSPATH` to `select hstsrvc, header from hbhsts`. The `HBSPATH` table dependency is eliminated. ✅
+
 ### Phase 2: Asynchronous & Service Architecture Implementation
 1.  **Create Asynchronous Framework:** Create the persistent `HBSWRITER` job and the `HBSLOGDQ` data queue.
 2.  **Offload CLOB Writes:** Refactor the application to write large JSON payloads to User Spaces and send messages to the writer job, removing the `INSERT` from the main transaction path.
@@ -65,22 +72,27 @@ In Phase 2, when `HBSWRITER` takes over the inserts asynchronously, this orderin
 
 In Phase 2, `HBSWRITER` will take over step 1 for the CLOB body write, but the two-step ownership pattern should be preserved.
 
-### 3.4. HBRESP Back-Link Column (HSTRGUID)
+### 3.4. HBRESP Key Design (HSGUID = HTGUID)
 
-`HBRESP` has an `HSTRGUID CHAR(36)` column that stores `HTGUID` (= `w_guid2`). This is the programmatic replacement for the dropped FK. It is populated by `HBSHANDLR.WrtSend` using `wReqData.r_pguid`.
+`HBRESP` uses `HSGUID CHAR(36)` as its primary key, and this value **is the same as `HTGUID`** — the locally generated `w_guid2` from `HBSCHILD1.WriteRecv`. This means no separate back-link column is needed.
 
-`HBSCHILD1.ReadSQL` selects `HSTRGUID` into `ReadDta.r_trguid`, which `UpdtStat` then uses to key the final `UPDATE HBSTRANS SET HTSNDSTS` — without this, `HBSCHILD1` would have no way to find the right `HBSTRANS` row, since it only has `wActvtGUID` (= `HBRESP.HSGUID`) at that point.
+- `HBSHANDLR.WrtSend` inserts into `HBRESP` using `wReqData.r_pguid` (= `HTGUID`) as `HSGUID`
+- `HBSCHILD1.ReadSQL` queries `HBRESP WHERE HSGUID = :w_guid` using `w_guid2` directly
+- `HBSCHILD1.UpdtStat` updates `HBSTRANS SET HTSNDSTS WHERE HTGUID = :w_guid2` using the same key
 
-### 3.5. Files Modified in Phase 1
+The single GUID value serves as the correlation key through the entire chain — no intermediary `r_trguid` field or back-link column is required.
+
+### 3.5. Files Modified in Phase 1 / Phase 1b
 
 | File | Type | Changes |
 |---|---|---|
 | `HBSTRANS.SQL` | DDL | New table; `HTSNAME`/`HTPNAME` are `NOT NULL WITH DEFAULT ''` |
 | `HBSREQ.SQL` | DDL | New table; no FK |
 | `HBRESP.SQL` | DDL | New table; no FK; includes `HSTRGUID` |
-| `HBSHANDLR.SQLRPGLE` | Program | `WrtTrans` → UPDATE; `WrtSend` → `INSERT INTO HBRESP`; `UpdtStat` → `UPDATE HBSTRANS` |
-| `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQ`; `ReadSQL` → `HBRESP`; `UpdtStat` uses `r_trguid` |
-| `HBSWORK.SQLRPGLE` | Program | `GetRQWorkData`/`GetMNWorkData` → `HBSREQ JOIN HBSTRANS`; `GetSRWorkData` → `HBRESP JOIN HBSTRANS` |
+| `HBSHANDLR.SQLRPGLE` | Program | `WrtTrans` → UPDATE; `WrtSend` → `INSERT INTO HBRESP`; `UpdtStat` → `UPDATE HBSTRANS`; all `hbstools_Actvty` → `hbstools_CrtLog` (ssp22); `LoadPath` cursor → `hbhsts` (ssp20); `GetWorkData` calls use `likeds(dsVersion)` (ssp21); globals `gCrtLogEvent`/`gAppErrLog`/`gVersionActive`/`gRunAsTest` added (ssp21); `CallSrvc` sets `RtnOpts` positions 1-2 from globals (ssp21) |
+| `HBSWORK.SQLRPGLE` | Program | `GetRQWorkData`/`GetMNWorkData` → `HBSREQ JOIN HBSTRANS`; `GetSRWorkData` → `HBRESP JOIN HBSTRANS`; all proc signatures changed to `likeds(dsVersion)` (ssp21); `SrvcLst` replaced by `dsVersion extname('HBSVERSNV1')` + `ServiceList` array (ssp21); `LoadSrvcs` cursor → `select * from HBSVERSN` (ssp21); `GetHostSrvc` returns full version row (ssp21) |
+| `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQ`; `ReadSQL` → `HBRESP`; `UpdtStat` uses `r_trguid`; `GetReqFiNum` proc restored; SQL Set Option block added |
+| `HBSHS003.SQLRPGLE` | Program | Copied from member; updated to `inPtr`/`outPtr` pattern |
 
 ---
 

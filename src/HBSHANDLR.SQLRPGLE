@@ -30,6 +30,9 @@ ctl-opt main(HBSHANDLR);
 /define HBSTOOLS_psds
 /include qcpysrc,hbstools
 /undefine HBSTOOLS_psds
+/define HBSSBSCTL
+/include qcpysrc,hbsstand
+/undefine HBSSBSCTL
 
 //---------------------------------------------------------
 // Procedure definitions
@@ -108,9 +111,7 @@ end-pr;
 dcl-pr GetWorkData int(10);
   WorkType char(2) const;
   inGuid char(36) const;
-  // ServiceName char(10);
-  HostService char(40);
-  HostProgram char(10);
+  pVersion likeds(dsVersion);
   ReceiveData pointer value;
 end-pr;
 
@@ -153,19 +154,14 @@ dcl-ds ReqContext_t qualified template;
   IsPush ind;
 end-ds;
 
+dcl-ds dsVersion extname('HBSVERSNV1') qualified template end-ds;
+dcl-ds wVersion likeds(dsVersion);
+
 dcl-ds ReqCtx likeds(ReqContext_t);
 
 dcl-ds *n extname('JHAPAR') dtaara(*auto) end-ds;
 
-dcl-ds HBSSBSCTL dtaara(*usrctl);
-  d_SBSName char(10);
-  d_SBSLib char(10);
-  d_BankLib char(10);
-  d_FINum char(4);
-  d_LocalIP char(16);
-  d_CoreID  char(5);
-  d_Misc    char(445);
-end-ds;
+
 
 //---------------------------------------------------------
 // Stand alone fields
@@ -186,6 +182,10 @@ dcl-s rc int(10);
 dcl-s handllog char(200);
 dcl-s w_dtaqctl char(10) inz('HBSCNTR');
 dcl-s w_dta30 char(10);
+dcl-s gCrtLogEvent char(1);
+dcl-s gAppErrLog char(1);
+dcl-s gVersionActive char(1);
+dcl-s gRunAsTest char(1);
 
 
 //--------------------------------------------------------
@@ -265,15 +265,23 @@ end-pi;
       // If RtrvJSON();
       rc = GetWorkData('RQ'              //in
                       :q_RcvGuid        //in
-                      // :gSrvcNam      //out
-                      :ReqCtx.HostService  //out
-                      :ReqCtx.HostProgram  //out
+                      :wVersion            //out
                       :%addr(RecvDta));
       if rc = 0;
+        ReqCtx.HostService = wVersion.SrvcName;
+        ReqCtx.HostProgram = wVersion.HostSrvc;
+        gCrtLogEvent = wVersion.CrtLogEvnt;
+        gAppErrLog = wVersion.AppErrLog;
+        gVersionActive = wVersion.VersnActv;
+        gRunAsTest = wVersion.RunAsTest;
         ReqCtx.RecvPtr = %addr(RecvDta);
         ReqCtx.RcvGuid = q_RcvGUID;
         ReqCtx.SndDtaq = q_SndDtaq;
-        hbstools_Actvty(r_pguid:r_aguid:550025);
+        hbstools_CrtLog(r_aguid
+                       :'GUIDLOG':''
+                       :'550025':''
+                       :Procname:psjobnm
+                       :%char(psjob#):'Y');
         WrtTrans(%addr(ReqCtx):'N');
         SendReqSuccess(%addr(ReqCtx));
       else;
@@ -286,11 +294,15 @@ end-pi;
     when %len(%trim(q_SndDtaq)) = 2;
       rc = GetWorkData(%trim(q_SndDtaq)  //in
                       :q_RcvGuid        //in
-                      // :gSrvcNam      //out
-                      :ReqCtx.HostService  //out
-                      :ReqCtx.HostProgram  //out
+                      :wVersion            //out
                       :%addr(RecvDta));
       if rc = 0;
+        ReqCtx.HostService = wVersion.SrvcName;
+        ReqCtx.HostProgram = wVersion.HostSrvc;
+        gCrtLogEvent = wVersion.CrtLogEvnt;
+        gAppErrLog = wVersion.AppErrLog;
+        gVersionActive = wVersion.VersnActv;
+        gRunAsTest = wVersion.RunAsTest;
         //hbstools_Actvty(r_PGuid:r_AGuid:560000:
         //  ' Work Type ' + %trim(q_SndDtaq) + ' found');
         ReqCtx.RecvPtr = %addr(RecvDta);
@@ -322,8 +334,11 @@ end-pi;
           q_SndDtaq = 'No Name';
         endif;
 
-        hbstools_Actvty('Not Available':q_RcvGUID:550013:
-                        %trim(q_SndDtaq) + ' Not Found');
+        hbstools_CrtLog(q_RcvGUID
+                       :'GUIDLOG':''
+                       :'550013':%trim(q_SndDtaq) + ' Not Found'
+                       :Procname:psjobnm
+                       :%char(psjob#):'Y');
       endif;
     endsl;
 
@@ -352,16 +367,23 @@ end-pi;
     if %len(%trim(q_SndDtaq)) = 2;
       rc = GetWorkData(%trim(q_SndDtaq)  //in
                       :q_RcvGuid        //in
-                      // :gSrvcNam      //out
-                      :ReqCtx.HostService  //out
-                      :ReqCtx.HostProgram  //out
+                      :wVersion            //out
                       :%addr(RecvDta));
       if rc = 0;
+        ReqCtx.HostService = wVersion.SrvcName;
+        ReqCtx.HostProgram = wVersion.HostSrvc;
+        gCrtLogEvent = wVersion.CrtLogEvnt;
+        gAppErrLog = wVersion.AppErrLog;
+        gVersionActive = wVersion.VersnActv;
+        gRunAsTest = wVersion.RunAsTest;
         ReqCtx.RecvPtr = %addr(RecvDta);
         ReqCtx.RcvGuid = q_RcvGUID;
         ReqCtx.SndDtaq = q_SndDtaq;
-        hbstools_Actvty(r_PGuid:r_AGuid:560000:
-                        ' Work Type ' + %trim(q_SndDtaq) + ' found');
+        hbstools_CrtLog(r_aguid
+                       :'GUIDLOG':''
+                       :'560000':' Work Type ' + %trim(q_SndDtaq) + ' found'
+                       :Procname:psjobnm
+                       :%char(psjob#):'Y');
         WrtTrans(%addr(ReqCtx):'X');
         SendReqSuccess(%addr(ReqCtx));
       else;
@@ -384,15 +406,23 @@ end-pi;
   else;
     rc = GetWorkData('RQ'              //in
                     :q_RcvGuid        //in
-                    // :gSrvcNam      //out
-                    :ReqCtx.HostService  //out
-                    :ReqCtx.HostProgram  //out
+                    :wVersion            //out
                     :%addr(RecvDta));
     if rc = 0;
+      ReqCtx.HostService = wVersion.SrvcName;
+      ReqCtx.HostProgram = wVersion.HostSrvc;
+      gCrtLogEvent = wVersion.CrtLogEvnt;
+      gAppErrLog = wVersion.AppErrLog;
+      gVersionActive = wVersion.VersnActv;
+      gRunAsTest = wVersion.RunAsTest;
       ReqCtx.RecvPtr = %addr(RecvDta);
       ReqCtx.RcvGuid = q_RcvGUID;
       ReqCtx.SndDtaq = q_SndDtaq;
-      hbstools_Actvty(r_pguid:r_aguid:550025);
+      hbstools_CrtLog(r_aguid
+                     :'GUIDLOG':''
+                     :'550025':''
+                     :Procname:psjobnm
+                     :%char(psjob#):'Y');
       WrtTrans(%addr(ReqCtx):'X');
       SendReqSuccess(%addr(ReqCtx));
     else;
@@ -428,12 +458,19 @@ end-pi;
     // the Origional values (If the child1 job does not write them to HBSRECV)
   end-ds;
 
-  hbstools_Actvty('Not Available':wReqCtx.RcvGuid:550029);
+  hbstools_CrtLog(wReqCtx.RcvGuid
+                 :'GUIDLOG':''
+                 :'550029':''
+                 :Procname:psjobnm
+                 :%char(psjob#):'Y');
 
   pInputPtr = wReqCtx.RecvPtr;
   //pOutPtr = %alloc(10);
   pOutPtr = *null;
   //pMsgPtr = %alloc(10);
+
+  %subst(wReqCtx.RtnOpts:1:1) = gCrtLogEvent;
+  %subst(wReqCtx.RtnOpts:2:1) = gAppErrLog;
 
   monitor;
 
@@ -461,7 +498,11 @@ end-pi;
     if %subst(wReqCtx.RtnOpts:40:1) <> 'N';
       WrtSend(pReqCtx:wReqCtx.HostProgram:pOutPtr:gAttempt);
     endif;
-    hbstools_Actvty(r_pguid:r_aguid:550034);
+    hbstools_CrtLog(r_aguid
+                   :'GUIDLOG':''
+                   :'550034':''
+                   :Procname:psjobnm
+                   :%char(psjob#):'Y');
     if pOutPtr <> *null;
       dealloc pOutPtr;
     endif;
@@ -526,7 +567,7 @@ end-proc;
 dcl-proc InitPgm;
 dcl-pi *n ind end-pi;
 
-  in HBSSBSCTL;
+  dsHBSSBSCTL = hbstools_GetDataArea('HBSSBSCTL':'*LIBL');
   w_dtaqlib = d_BankLib;
 
   // Make sure Rcv data queue exists if not create it
@@ -561,8 +602,8 @@ dcl-pi *n ind end-pi;
 
   exec sql
     declare PathCSR cursor
-      for select *
-        from HBSPATH;
+      for select hstsrvc, header
+        from hbhsts;
 
   LoadPath();
 
@@ -613,7 +654,11 @@ end-pi;
     Success ind;
   end-ds;
 
-  hbstools_Actvty(wReqData.r_pguid:wReqData.r_aguid:pErrNum);
+  hbstools_CrtLog(wReqData.r_aguid
+                 :'GUIDLOG':''
+                 :%char(pErrNum):''
+                 :Procname:psjobnm
+                 :%char(psjob#):'Y');
 
   wErrDsc = hbstools_GetDsc(pErrNum);
 
@@ -706,10 +751,18 @@ end-pi;
       where HTGUID = :wReqData.r_pguid;
 
   if sqlstate <> '00000';
-    hbstools_Actvty(wReqData.r_pguid:wReqData.r_aguid:550032);
+    hbstools_CrtLog(wReqData.r_aguid
+                   :'GUIDLOG':''
+                   :'550032':''
+                   :Procname:psjobnm
+                   :%char(psjob#):'Y');
   endif;
 
-  hbstools_Actvty(wReqData.r_pguid:wReqData.r_aguid:550033);
+  hbstools_CrtLog(wReqData.r_aguid
+                 :'GUIDLOG':''
+                 :'550033':''
+                 :Procname:psjobnm
+                 :%char(psjob#):'Y');
 
   return;
 
@@ -743,7 +796,11 @@ end-pi;
 
   if not hbstools_ChkDtaq(w_dtaqlib:pDQname);
     if not hbstools_CrtDtaq(w_dtaqlib:pDQname:w_dqlen);
-      hbstools_Actvty(' ':' ':550025);
+      hbstools_CrtLog(''
+                     :'GUIDLOG':''
+                     :'550025':''
+                     :Procname:psjobnm
+                     :%char(psjob#):'Y');
       return;
     endif;
   endif;
@@ -806,7 +863,11 @@ end-pi;
      where HTGUID = :wReqData.r_pguid;
 
   if sqlstate <> '00000';
-    hbstools_Actvty(wReqData.r_pguid:wReqData.r_aguid:550028);
+    hbstools_CrtLog(wReqData.r_aguid
+                   :'GUIDLOG':''
+                   :'550028':''
+                   :Procname:psjobnm
+                   :%char(psjob#):'Y');
   endif;
 
   return;
@@ -896,11 +957,19 @@ end-pi;
       wStatUpd = 'X';
     endif;
 
-    hbstools_Actvty(wParntGUID:wActvtGUID:550027);
+    hbstools_CrtLog(wActvtGUID
+                   :'GUIDLOG':''
+                   :'550027':''
+                   :Procname:psjobnm
+                   :%char(psjob#):'Y');
 
     UpdtStat(wStatUpd);
   else;
-    hbstools_Actvty(wParntGUID:wActvtGUID:550028);
+    hbstools_CrtLog(wActvtGUID
+                   :'GUIDLOG':''
+                   :'550027':''
+                   :Procname:psjobnm
+                   :%char(psjob#):'Y');
     UpdtStat('E');
   endif;
 

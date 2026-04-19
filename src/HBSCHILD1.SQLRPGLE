@@ -37,6 +37,9 @@ M03   // 10/2/22 Everett - retrieve bank libs from HBSSBSCTL
 23004  /define HBSTOOLS_psds
       /include qcpysrc,hbstools
 23004  /undefine HBSTOOLS_psds
+       /define HBSSBSCTL
+       /include qcpysrc,hbsstand
+       /undefine HBSSBSCTL
 
          // execute iSeries system command
          //include qcpysrc,systemcpy
@@ -130,13 +133,7 @@ M06  D                 s             10i 0 inz(0050000)
 23005     r_clob sqltype(clob:2000000) inz('');
        END-DS;
 
-M03    dcl-ds HBSSBSCTL dtaara(*usrctl);
-M03      d_SBSName char(10);
-M03      d_SBSLib char(10);
-M03      d_BankLib char(10);
-M03      d_FINum char(4);
-M03      d_LocalIP char(16);
-M03    end-ds;
+
 
      D*---------------------------------------------------------------------
      D* Stand Alone Fields - TOP
@@ -565,7 +562,7 @@ kkg      CheckQue(w_dtaqctl);
 
           w_timestmp = %timestamp();
 
-M03    in HBSSBSCTL;
+M03    dsHBSSBSCTL = hbstools_GetDataArea('HBSSBSCTL':'*LIBL');
 M03    w_dtaqlib = d_BankLib;
 
        Endsr;
@@ -1140,10 +1137,18 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
               %subst(w_qdata:46:1) = 'Q';
               ChkDtaq(w_dtaqnm);
               recvstart = 'Socket Receive Start' +  %Char(rcvstart);
-              hbstools_Actvty(w_GUID:W_GUID2:540000:recvstart);
+              hbstools_CrtLog(w_GUID2
+                             :'GUIDLOG':''
+                             :'540000':%char(recvstart)
+                             :Procname:psjobnm
+                             :%char(psjob#):'Y');
 
               //   HBSTOOLS_RECVLOG(w_guid:w_guid2);
-                hbstools_Actvty(w_GUID:W_GUID2:540000);
+              hbstools_CrtLog(W_GUID2
+                             :'GUIDLOG':''
+                             :'540000':''
+                             :Procname:psjobnm
+                             :%char(psjob#):'Y');
 
               IF H400ERR = *OFF;
                 SndDtaq(w_dtaqnm:w_dtaqlib:W_qlen:
@@ -1314,7 +1319,11 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
          // recieve completed
           if  totr   = bufferlen;
              // HBSTOOLS_sendlog(w_guid);
-                hbstools_Actvty(w_GUID:W_GUID:540001);
+             hbstools_CrtLog(W_GUID
+                            :'GUIDLOG':''
+                            :'540001':''
+                            :Procname:psjobnm
+                            :%char(psjob#):'Y');
              UpdtStat('Y');
              TotSend += 1;
           endif;

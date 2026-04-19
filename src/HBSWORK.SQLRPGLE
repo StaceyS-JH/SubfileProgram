@@ -27,10 +27,8 @@ dcl-ds RecvDta;
   r_clob varchar(2000000);
 end-ds;
 
-dcl-ds SrvcLst qualified dim(200);
-  s_clntsrvc char(40);
-  s_hostsrvc char(10);
-end-ds;
+dcl-ds dsVersion extname('HBSVERSNV1') qualified template end-ds;
+dcl-ds ServiceList likeds(dsVersion) dim(200);
 
 dcl-ds SRSrvcMap qualified dim(200);
   sr_hstSvc char(10);
@@ -53,8 +51,7 @@ dcl-proc GetWorkData export;
 dcl-pi *n int(10);
   pWorkType char(2) const;
   pInGuid char(36) const;
-  pHostService char(40);
-  pHostProgram char(10);
+  pVersion likeds(dsVersion);
   pReceiveData pointer;
 end-pi;
 
@@ -75,23 +72,19 @@ end-pi;
   select;
     when pWorkType = 'RQ';
       wRc = GetRQWorkData(pInGuid
-                         :pHostService
-                         :pHostProgram
+                         :pVersion
                          :pRecvData);
     when pWorkType = 'SR';
       wRc = GetSRWorkData(pInGuid
-                         :pHostService
-                         :pHostProgram
+                         :pVersion
                          :pRecvData);
     when pWorkType = 'MN';
       wRc = GetMNWorkData(pInGuid
-                         :pHostService
-                         :pHostProgram
+                         :pVersion
                          :pRecvData);
     when pWorkType = 'CI';
       wRc = GetCIWorkData(pInGuid
-                         :pHostService
-                         :pHostProgram
+                         :pVersion
                          :pRecvData);
     other;
       // work type not defined
@@ -113,8 +106,7 @@ end-proc;
 dcl-proc GetSRWorkData;
 dcl-pi *n int(10);
   inGuid char(36) const;
-  outHostService char(40);
-  outHostProgram char(10);
+  outVersion likeds(dsVersion);
   outData likeds(RecvDta);
 end-pi;
 
@@ -184,8 +176,8 @@ end-pi;
     return 550017;
   endif;
 
-  outHostProgram = SRSrvcMap(wSRMapIdx).sr_hstPgm;
-  outHostService = SRSrvcMap(wSRMapIdx).sr_srvcNam;
+  outVersion.SrvcName = SRSrvcMap(wSRMapIdx).sr_srvcNam;
+  GetHostSrvc(outVersion);
 
   return 0;
 
@@ -202,8 +194,7 @@ end-proc;
 dcl-proc GetRQWorkData;
 dcl-pi *n int(10);
   inGuid char(36) const;
-  outHostService char(40);
-  outHostProgram char(10);
+  outVersion likeds(dsVersion);
   outData likeds(RecvDta);
 end-pi;
 
@@ -253,8 +244,7 @@ end-pi;
 
   // Find service name from JSON request header
   wRc = FindSrvc(wr_header
-                :outHostProgram
-                :outHostService);
+                :outVersion);
   if wRc <> 0;
     return wRc;
   endif;
@@ -269,16 +259,15 @@ end-proc;
 dcl-proc FindSrvc;
 dcl-pi *n int(10);
   pRecvHdr char(5000) const;
-  pHostService char(10);
-  pClientService char(40);
+  pVersion likeds(dsVersion);
 end-pi;
 
   dcl-s wEPos int(10);
   dcl-s wSPos int(10);
   dcl-s wSrvcNam char(80);
+  dcl-s wRc int(10);
 
-  pHostService   = *blanks;
-  pClientService = *blanks;
+  clear pVersion;
 
   // Scan for service name at end of header
   wEPos = %scan('HTTP/':pRecvHdr:7);
@@ -300,9 +289,9 @@ end-pi;
     when wSrvcNam = *blanks;
       return 550036;
     other;
-      pClientService = wSrvcNam;
-      pHostService = GetHostSrvc(wSrvcNam);
-      if pHostService = *blanks;
+      pVersion.SrvcName = wSrvcNam;
+      wRc = GetHostSrvc(pVersion);
+      if wRc <> 0;
         return 550017;
       else;
         return 0;  // success
@@ -315,8 +304,8 @@ end-proc;
 // GetHostSrvc - Find Host Service name from service list
 //---------------------------------------------------------
 dcl-proc GetHostSrvc;
-dcl-pi *n char(10);
-  pSrvcNam varchar(80) const;
+dcl-pi *n int(10);
+  pVersion likeds(dsVersion);
 end-pi;
 
   dcl-s ListIndx int(10);
@@ -329,7 +318,7 @@ end-pi;
   ListIndx = 0;
 
   for wAttmpt = 1 to 2;
-    ListIndx = %lookup(pSrvcNam:SrvcLst(*).s_clntsrvc:1);
+    ListIndx = %lookup(pVersion.SrvcName:ServiceList(*).SrvcName:1);
     if ListIndx <= 0 and wAttmpt = 1;
       LoadSrvcs();
     else;
@@ -338,10 +327,11 @@ end-pi;
   endfor;
 
   if ListIndx > 0;
-    return SrvcLst(ListIndx).s_hostsrvc;
+    pVersion = ServiceList(ListIndx);
+    return 0;
   endif;
 
-  return *blanks;
+  return 1;
 
 end-proc;
 
@@ -355,11 +345,11 @@ dcl-pi *n ind end-pi;
 
   FindSrvc = *off;
 
-  clear SrvcLst;
+  clear ServiceList;
 
   exec sql
     declare VrsnCSR cursor
-      for select SrvcName, HostSrvc
+      for select *
             from HBSVERSN
             where Version = :gVersion;
 
@@ -369,7 +359,7 @@ dcl-pi *n ind end-pi;
   exec sql
     fetch next
     from VrsnCsr for 200 rows
-      into :SrvcLst;
+      into :ServiceList;
 
   if sqlstate = '02000' or
     SQLerrd(3) <= 0;
@@ -447,8 +437,7 @@ end-proc;
 dcl-proc GetMNWorkData;
 dcl-pi *n int(10);
   inGuid char(36) const;
-  outHostService char(40);
-  outHostProgram char(10);
+  outVersion likeds(dsVersion);
   outData likeds(RecvDta);
 end-pi;
 
@@ -499,14 +488,12 @@ end-pi;
     return 550015;
   endif;
 
-  outHostProgram = GetHostSrvc(wSrvcNam);
-  if outHostProgram = *blanks;
+  outVersion.SrvcName = wSrvcNam;
+  if GetHostSrvc(outVersion) <> 0;
     outData.r_pguid = 'Not Available';
     outData.r_aguid = inGuid;
     return 550017;
   endif;
-
-  outHostService = wSrvcNam;
 
   return 0;
 
@@ -518,8 +505,7 @@ end-proc;
 dcl-proc GetCIWorkData;
 dcl-pi *n int(10);
   inGuid char(36) const;
-  outHostService char(40);
-  outHostProgram char(10);
+  outVersion likeds(dsVersion);
   outData likeds(RecvDta);
 end-pi;
 
@@ -566,14 +552,12 @@ end-pi;
     return 550015;
   endif;
 
-  outHostProgram = GetHostSrvc(wSrvcNam);
-  if outHostProgram = *blanks;
+  outVersion.SrvcName = wSrvcNam;
+  if GetHostSrvc(outVersion) <> 0;
     outData.r_pguid = 'Not Available';
     outData.r_aguid = inGuid;
     return 550017;
   endif;
-
-  outHostService = wSrvcNam;
 
   return 0;
 
