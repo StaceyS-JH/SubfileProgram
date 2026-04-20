@@ -1121,8 +1121,11 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
            // Write master transaction record to HBSTRANS
            Exec SQL
              insert into HBSTRANS
-              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
-               values (:w_guid2, :w_pguid, :w_guid, 'RQ', :w_stat, 'N', :prmhead);
+              (HTGUID, HTRQPGUID, HTRQAGUID,
+               HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+             values
+              (:w_guid2, :w_pguid, :w_guid,
+               'RQ', :w_stat, 'N', :prmhead);
 
            if sqlstate <> '00000';
              hbstools_CommLog(660005:'HBSTRANS insert failed SQLSTATE=' + sqlstate
@@ -1525,8 +1528,11 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
 
            Exec SQL
              insert into HBSTRANS
-              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
-               values (:w_guid2, :w_guid, :w_guid, 'RQ', :w_stat, 'N', :prmhead);
+              (HTGUID, HTRQPGUID, HTRQAGUID,
+               HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+             values
+              (:w_guid2, :w_guid, :w_guid,
+               'RQ', :w_stat, 'N', :prmhead);
 
            Exec SQL
              insert into HBSREQ
