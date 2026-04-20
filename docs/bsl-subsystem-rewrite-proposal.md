@@ -212,6 +212,23 @@ A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 *   **Synchronous Status Updates:** It has been reviewed and confirmed that small, fast SQL `UPDATE` statements (e.g., for a status flag) do **not** need to be offloaded and can be performed synchronously by the main application programs.
 *   **Error Handling:** The `HBSWRITER` program must have robust error handling to log any failures during the database write process.
 *   **Job Queue Management:** The `HBSWRITER` job should be configured to run in an appropriate subsystem and job queue.
+*   **Possible Future: System-Wide Debug Messaging Framework.** Debugging `HBSWRITER`, `HBSHANDLR`, and `HBSCHILD1` is currently difficult because detailed trace-level information is not available without code changes. A toggleable debug framework applied across all three programs would significantly improve diagnosability. Key design considerations:
+
+    *   **Activation via Control Queue.** Each persistent job (`HBSWRITER`, `HBSHANDLR`) already has or is adjacent to a control queue. Sending `DEBUGON` or `DEBUGOFF` to that queue would toggle a `w_debug` indicator in real time — no restart or recompile required. For `HBSCHILD1`, which is request-scoped (not persistent), the debug flag could be read from a shared data area at job startup.
+
+    *   **Where to write debug output — three options:**
+        1. **`hbstools_CommLog` (current pattern).** Simplest to implement but mixes debug noise with operational logs. Not ideal if `CommLog` feeds monitoring or alerting.
+        2. **Job log via `SNDPGMMSG`.** Zero schema overhead. Messages appear in `DSPJOBLOG` and are gone when the job ends. Best for transient, trace-level detail during a specific debug session.
+        3. **Dedicated debug table (e.g., `HBSDEBUG`).** Higher setup cost but enables persistent, queryable debug history. First-class columns for GUID, program name, procedure, timestamp, and message text make correlation queries simple (`SELECT * FROM HBSDEBUG WHERE DBGUID = '...' ORDER BY DBTS`). Rows can be purged on a short cycle independently of operational data.
+
+    *   **Recommended approach.** Job log for real-time trace-level output; dedicated table for anything that needs to survive the job and be queried after the fact. The two are complementary. Error-level messages remain in `CommLog` unconditionally regardless of the debug flag.
+
+*   **Possible Future: Selective Request/Response Storage per Service.** Currently every transaction writes both a request (`HBSREQ`) and response (`HBRESP`) row unconditionally. For high-volume services where the response is only useful for diagnosis, storing successful responses is unnecessary overhead. Two new flags on `HBSVERSN` (surfaced through `HBSVERSNV1` and the existing `dsVersion` DS already returned by `HBSWORK.GetWorkData`) would control this per service:
+
+    *   `LogReqData char(1)` — `'Y'` = always write request body to `HBSREQ`; `'N'` = skip.
+    *   `LogRespData char(1)` — `'Y'` = always write; `'E'` = errors only (i.e., `Success = *off` or `ResponseDetailCollection` contains error codes); `'N'` = never write.
+
+    **Decision point is `HBSHANDLR`**, not `HBSWRITER`. Since `HBSHANDLR` constructs the response and already knows the success/error outcome before calling `WrtSend`, it can simply skip creating the User Space and sending the DQ message when storage is not required — nothing reaches `HBSWRITER` at all for suppressed records. This keeps `HBSWRITER` simple and stateless. The `LogReqData`/`LogRespData` values are already available in `gCrtLogEvent`/`gAppErrLog` style globals once `GetWorkData` returns, requiring no additional queries.
 
 ## 7. Benefits
 

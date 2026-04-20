@@ -3,6 +3,7 @@
 -- =================================================================
 CREATE OR REPLACE TABLE HBRESP (
     HSGUID          CHAR(36)      NOT NULL,       -- FK to HBSTRANS.HTGUID (= w_guid2)
+    HSTS            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Write timestamp
     HSBODY          CLOB(16M),                    -- Outbound JSON payload
 
     PRIMARY KEY(HSGUID)

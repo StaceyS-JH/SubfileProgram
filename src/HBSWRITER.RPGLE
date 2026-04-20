@@ -136,15 +136,13 @@ dcl-s w_rcvbuf char(66);       // must match %size(dsLogMsg): 4+36+10+10+4+2
 dcl-s w_wait   int(10) inz(-1);
 
 exec sql
-  select cast(message_data as char(66))  // 66 = %size(dsLogMsg); update if DS changes
+  select message_data
   into :w_rcvbuf
-  from table(
-      qsys2.receive_data_queue(
-      data_queue         => 'HBSLOGDQ',
-      data_queue_library => :w_dtaqlib,
-      remove             => 'YES',
-      wait_time          => :w_wait)) as dq
-  fetch first 1 row only;
+  from table(qsys2.receive_data_queue(
+    data_queue         => 'HBSLOGDQ',
+    data_queue_library => :w_dtaqlib,
+    remove             => 'YES',
+    wait_time          => :w_wait));
 
 if sqlstate <> '00000' and sqlstate <> '01000';
   return *off;

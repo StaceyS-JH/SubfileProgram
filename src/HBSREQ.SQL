@@ -3,6 +3,7 @@
 -- =================================================================
 CREATE OR REPLACE TABLE HBSREQ (
     HRGUID          CHAR(36)      NOT NULL,       -- Logical link to HBSTRANS.HTGUID
+    HRTS            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Write timestamp
     HRBODY          CLOB(16M),                    -- Inbound JSON payload
 
     PRIMARY KEY(HRGUID)
