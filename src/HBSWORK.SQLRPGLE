@@ -189,7 +189,7 @@ end-proc;
 //   Queries HBSREQ joined with HBSTRANS
 //   wr_pguid    = HRGUID     (HTGUID = w_guid2, the transaction key)
 //   wr_aguid    = HTRQAGUID  (JSON ActivityId, for activity logging)
-//   wr_header   = HRHEADER   (HTTP request header)
+//   wr_header   = HTREQHDR   (HTTP request header, now in HBSTRANS)
 //   wr_sql_clob = HRBODY     (JSON request payload)
 //---------------------------------------------------------
 dcl-proc GetRQWorkData;
@@ -213,7 +213,7 @@ end-pi;
 
   exec sql
     select r.HRGUID, t.HTRQAGUID,
-           cast(r.HRHEADER as varchar(5000)),
+           cast(t.HTREQHDR as varchar(5000)),
            r.HRBODY
       into :wRecv
       from HBSREQ r
@@ -433,7 +433,7 @@ end-proc;
 //   Queries HBSREQ joined with HBSTRANS (same as GetRQWorkData)
 //   wr_pguid    = HRGUID     (HTGUID = w_guid2, the transaction key)
 //   wr_aguid    = HTRQAGUID  (JSON ActivityId, for activity logging)
-//   wr_header   = HRHEADER   (used as service name for MN type)
+//   wr_header   = HTREQHDR   (used as service name for MN type, now in HBSTRANS)
 //   wr_sql_clob = HRBODY     (JSON request payload)
 //---------------------------------------------------------
 dcl-proc GetMNWorkData;
@@ -457,7 +457,7 @@ end-pi;
 
   exec sql
     select r.HRGUID, t.HTRQAGUID,
-           cast(r.HRHEADER as varchar(5000)),
+           cast(t.HTREQHDR as varchar(5000)),
            r.HRBODY
       into :wRecv
       from HBSREQ r

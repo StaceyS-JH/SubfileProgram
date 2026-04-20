@@ -19,7 +19,7 @@
 //--------------------------------------------------------------
 ctl-opt dftactgrp(*no) actgrp(*new)
         option(*srcstmt: *nodebugio)
-        bnddir('JHBIND');
+        bnddir('JHBIND': 'HBSBIND');
 
 /define HBSTOOLS_psds
 /include qcpysrc,hbstools
@@ -53,11 +53,11 @@ end-ds;
 // API Error DS
 //--------------------------------------------------------------
 dcl-ds dsApiErr qualified;
-  BytesPrv  int(10) inz(%size(dsApiErr));
-  BytesAvl  int(10);
-  MsgId     char(7);
-            char(1);
-  MsgDta    char(256);
+  BytesPrv int(10) inz(%size(dsApiErr));
+  BytesAvl int(10) inz(0);
+  MsgId    char(7);
+  Reserved char(1);
+  MsgDta   char(256);
 end-ds;
 
 //--------------------------------------------------------------
@@ -80,7 +80,7 @@ dcl-pr QUSPTRUS extpgm('QUSPTRUS');
   ErrCode   likeds(dsApiErr);
 end-pr;
 
-dcl-pr QUSDLUS extpgm('QUSDLUS');
+dcl-pr QUSDLTUS extpgm('QUSDLTUS');
   QualName  char(20) const;
   ErrCode   likeds(dsApiErr);
 end-pr;
@@ -128,7 +128,7 @@ endif;
 //--------------------------------------------------------------
 // Generate GUID using QSYS2.UUID_CHAR() (v4 random) and build test payloads
 //--------------------------------------------------------------
-exec sql VALUES QSYS2.UUID_CHAR() INTO :w_guid;
+exec sql VALUES QSYS2.GENERATE_UUID() INTO :w_guid;
 
 w_reqJson  = '{"ActivityId":"' + w_guid + '",' +
              '"ParentActivityId":"00000000-0000-0000-0000-000000000000",' +
@@ -153,7 +153,7 @@ hbstools_CommLog(660001: 'TSTHBSWRTR: Starting test with GUID=' + w_guid);
 exec sql
   insert into HBSTRANS
     (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS,
-     HTRQHEADER, HTSNDHEADER)
+     HTREQHDR, HTRESHDR)
   values (:w_guid,
           '00000000-0000-0000-0000-000000000000',
           :w_guid,

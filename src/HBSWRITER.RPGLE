@@ -13,7 +13,7 @@
 //--------------------------------------------------------------
 ctl-opt dftactgrp(*no) actgrp('HBSWRITER')
         option(*srcstmt: *nodebugio)
-        bnddir('JHBIND');
+        bnddir('JHBIND': 'HBSBIND');
 
 // 04/19/26 #1184229 S Smith - Rewrite: HBSRECV/HBSSEND to HBSREQ/HBRESP
 //                             Persistent DQ listener replacing submitted job
@@ -51,11 +51,11 @@ end-ds;
 // API Error DS
 //--------------------------------------------------------------
 dcl-ds dsApiErr qualified;
-  BytesPrv  int(10) inz(%size(dsApiErr));
-  BytesAvl  int(10);
-  MsgId     char(7);
-            char(1);
-  MsgDta    char(256);
+  BytesPrv int(10) inz(%size(dsApiErr));
+  BytesAvl int(10) inz(0);
+  MsgId    char(7);
+  Reserved char(1);
+  MsgDta   char(256);
 end-ds;
 
 //--------------------------------------------------------------
@@ -67,7 +67,7 @@ dcl-pr QUSPTRUS extpgm('QUSPTRUS');
   ErrCode   likeds(dsApiErr);
 end-pr;
 
-dcl-pr QUSDLUS extpgm('QUSDLUS');
+dcl-pr QUSDLTUS extpgm('QUSDLTUS');
   QualName  char(20) const;
   ErrCode   likeds(dsApiErr);
 end-pr;
@@ -75,19 +75,19 @@ end-pr;
 //--------------------------------------------------------------
 // Forward procedure declarations
 //--------------------------------------------------------------
-dcl-pr ReadLogQue ind extproc(*dclcase);
-  p_msg  char(%size(dsLogMsg));
+dcl-pr ReadLogQue ind extproc('ReadLogQue');
+  p_msg  like(dsLogMsg);
 end-pr;
 
-dcl-pr WriteReq extproc(*dclcase);
+dcl-pr WriteReq extproc('WriteReq');
   p_msg  likeds(dsLogMsg) const;
 end-pr;
 
-dcl-pr WriteResp extproc(*dclcase);
+dcl-pr WriteResp extproc('WriteResp');
   p_msg  likeds(dsLogMsg) const;
 end-pr;
 
-dcl-pr CleanupUs extproc(*dclcase);
+dcl-pr CleanupUs extproc('CleanupUs');
   p_qual char(20) const;
 end-pr;
 
@@ -95,7 +95,7 @@ end-pr;
 // Module-level working variables
 //--------------------------------------------------------------
 dcl-s w_end    ind   inz(*off);
-dcl-s w_msgraw char(%size(dsLogMsg));
+dcl-s w_msgraw like(dsLogMsg);
 dcl-s w_dtaqlib char(10);
 
 //--------------------------------------------------------------
@@ -129,26 +129,28 @@ return;
 //--------------------------------------------------------------
 dcl-proc ReadLogQue;
 dcl-pi *n ind;
-  p_msg  char(%size(dsLogMsg));
+  p_msg  like(dsLogMsg);
 end-pi;
 
-dcl-s w_msglen int(10) inz(%size(dsLogMsg));
+dcl-s w_rcvbuf char(66);       // must match %size(dsLogMsg): 4+36+10+10+4+2
+dcl-s w_wait   int(10) inz(-1);
 
 exec sql
-  select cast(message_data as char(:w_msglen))
-  into :p_msg
+  select cast(message_data as char(66))  // 66 = %size(dsLogMsg); update if DS changes
+  into :w_rcvbuf
   from table(
       qsys2.receive_data_queue(
       data_queue         => 'HBSLOGDQ',
       data_queue_library => :w_dtaqlib,
       remove             => 'YES',
-      wait_time          => -1)) as dq
+      wait_time          => :w_wait)) as dq
   fetch first 1 row only;
 
 if sqlstate <> '00000' and sqlstate <> '01000';
   return *off;
 endif;
 
+p_msg = w_rcvbuf;
 return *on;
 
 end-proc;
@@ -236,9 +238,9 @@ dcl-pi *n;
 end-pi;
 
 clear dsApiErr;
-QUSDLUS(p_qual: dsApiErr);
+QUSDLTUS(p_qual: dsApiErr);
 if dsApiErr.BytesAvl > 0;
-  hbstools_CommLog(660005: 'HBSWRITER CleanupUs: QUSDLUS failed for ' +
+  hbstools_CommLog(660005: 'HBSWRITER CleanupUs: QUSDLTUS failed for ' +
                            %trimr(%subst(p_qual: 1: 10)));
 endif;
 

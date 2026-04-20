@@ -47,7 +47,7 @@ Three distinct GUIDs are used per transaction:
 
 | Field | Value | Source |
 |---|---|---|
-| `HBSTRANS.HTGUID` | Locally generated (`exec sql VALUES QSYS2.UUID_CHAR() INTO :w_guid2`) | `HBSCHILD1.WriteRecv` |
+| `HBSTRANS.HTGUID` | Locally generated (`exec sql VALUES QSYS2.GENERATE_UUID() INTO :w_guid2`) | `HBSCHILD1.WriteRecv` |
 | `HBSTRANS.HTRQAGUID` | JSON `ActivityId` (`w_guid`) | Parsed from inbound request |
 | `HBSTRANS.HTRQPGUID` | JSON `ParentActivityId` (`w_pguid`) | Parsed from inbound request |
 
@@ -111,9 +111,9 @@ To resolve I/O bottlenecks, we will implement a unified asynchronous logging mec
     *   Example: `HTGUID` = `4c89cc10-...` → User Space names `RQ4c89cc10` / `RS4c89cc10`
     *   The User Space name is directly reconstructable from `HBSTRANS.HTGUID` at any point, making orphan detection trivial. User Spaces are created in the library identified by `d_BankLib` from the `HBSSBSCTL` data area (the same library used for all subsystem data queues), **not** in `QTEMP`, since `HBSWRITER` runs as a separate job and cannot access the creating job's `QTEMP`.
 
-*   **UUID Source — `QSYS2.UUID_CHAR()` (v4):** `HTGUID` is generated using `QSYS2.UUID_CHAR()`, which produces a **version 4 (random)** UUID per RFC 4122. This replaces the prior use of `hbstools_CrtGUID()` (v1, time-based). The GUID serves as a random identity key only — sequencing is handled by the row timestamp, so there is no need for a time-ordered UUID.
+*   **UUID Source — `QSYS2.GENERATE_UUID()` (v4):** `HTGUID` is generated using `QSYS2.GENERATE_UUID()`, which produces a **version 4 (random)** UUID per RFC 4122. This replaces the prior use of `hbstools_CrtGUID()` (v1, time-based). The GUID serves as a random identity key only — sequencing is handled by the row timestamp, so there is no need for a time-ordered UUID.
 
-    | Property | `hbstools_CrtGUID()` (v1) — old | `QSYS2.UUID_CHAR()` (v4) — new |
+    | Property | `hbstools_CrtGUID()` (v1) — old | `QSYS2.GENERATE_UUID()` (v4) — new |
     |---|---|---|
     | Algorithm | 100ns clock + MAC address | Cryptographically random |
     | First 8 chars (`time_low`) | Sequential — increments every 100ns | 32 bits of independent entropy |
@@ -144,7 +144,7 @@ To resolve I/O bottlenecks, we will implement a unified asynchronous logging mec
 
     ```rpgle
     dow rtyCount < 3;
-      exec sql VALUES QSYS2.UUID_CHAR() INTO :w_GUID2;
+      exec sql VALUES QSYS2.GENERATE_UUID() INTO :w_GUID2;
       w_usName = 'RQ' + %subst(w_GUID2: 1: 8);
       clear dsApiErr;
       QUSCRTUS(w_usName + w_dtaqlib :'HBSJSON   ':bodyLen:x'00'

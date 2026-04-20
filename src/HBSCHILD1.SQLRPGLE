@@ -1116,13 +1116,13 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
            Endif;
 
            // Generate local host GUID - this is the primary key in HBSTRANS
-           exec sql VALUES QSYS2.UUID_CHAR() INTO :w_GUID2;
+           exec sql VALUES QSYS2.GENERATE_UUID() INTO :w_GUID2;
 
            // Write master transaction record to HBSTRANS
            Exec SQL
              insert into HBSTRANS
-              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS)
-               values (:w_guid2, :w_pguid, :w_guid, 'RQ', :w_stat, 'N');
+              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+               values (:w_guid2, :w_pguid, :w_guid, 'RQ', :w_stat, 'N', :prmhead);
 
            if sqlstate <> '00000';
              hbstools_CommLog(660005:'HBSTRANS insert failed SQLSTATE=' + sqlstate
@@ -1130,11 +1130,11 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
              return *off;
            endif;
 
-           // Write request header and body to HBSREQ
+           // Write request body to HBSREQ
            Exec SQL
              insert into HBSREQ
-              (HRGUID, HRHEADER, HRBODY)
-               values (:w_guid2, :prmhead, :prmjson);
+              (HRGUID, HRBODY)
+               values (:w_guid2, :prmjson);
 
            if sqlstate <> '00000';
              hbstools_CommLog(660005:'HBSREQ insert failed SQLSTATE=' + sqlstate
@@ -1525,13 +1525,13 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
 
            Exec SQL
              insert into HBSTRANS
-              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS)
-               values (:w_guid2, :w_guid, :w_guid, 'RQ', :w_stat, 'N');
+              (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+               values (:w_guid2, :w_guid, :w_guid, 'RQ', :w_stat, 'N', :prmhead);
 
            Exec SQL
              insert into HBSREQ
-              (HRGUID, HRHEADER, HRBODY)
-               values (:w_guid2, :prmhead, :prmjson);
+              (HRGUID, HRBODY)
+               values (:w_guid2, :prmjson);
 
 
           return *off;

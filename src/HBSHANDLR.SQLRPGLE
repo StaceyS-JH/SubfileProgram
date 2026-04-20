@@ -933,10 +933,16 @@ exec sql
     delete from HBRESP where HSGUID = :wReqData.r_pguid;
 
 exec sql
-    insert into HBRESP (HSGUID, HSATTMPT, HSHEADER, HSBODY)
-        values (:wReqData.r_pguid, :pAttempt, :wHeadr, :SqlJSON);
+    insert into HBRESP (HSGUID, HSBODY)
+        values (:wReqData.r_pguid, :SqlJSON);
 
 if SQLstate = '00000';
+    // Write response header and attempt count back to HBSTRANS
+    exec sql
+        update HBSTRANS
+           set HTRESHDR   = :wHeadr,
+               HTATTEMPTS = :pAttempt
+         where HTGUID = :wReqData.r_pguid;
 
     // Do not write to send data queue if running test
     if wReqCtx.IsTest = *off;
