@@ -908,7 +908,7 @@ endif;
 // Client request gets different header than push
 if wReqCtx.IsPush = *off;
 
-    if %parms < 4;
+    if not %passed(pStat);
     wStatUpd = 'Y';
     wHeadr = 'HTTP/1.1 200 OK' + CRLF +
             'Content-Type: application/json; charset=utf-8' +
