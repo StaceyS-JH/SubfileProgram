@@ -49,18 +49,17 @@ M03   // 10/2/22 Everett - retrieve bank libs from HBSSBSCTL
       * Constants
       *****************************************************************
 
-M06  D FiftyMilliseconds...
-M06  D                 s             10i 0 inz(0050000)
-     D AF_INET         c                   const(2)
-     D AF_UNIX         c                   const(1)
-     D INADD_NONE      c                   const(-1)
-     D INADDR_ANY      c                   const(0)
-     D REUSEADDR       c                   const(55)
-     D SCK_STREAM      c                   const(1)
-     D SOCK_DGRAM      c                   const(2)
-     D SOL_socket      c                   const(-1)
-23001D TCP_NODELAY     C                   10
-23001D IPPROTO_IP      C                   CONST(0)
+       dcl-s FiftyMilliseconds int(10) inz(50000);
+       dcl-c AF_INET      2;
+       dcl-c AF_UNIX      1;
+       dcl-c INADD_NONE   -1;
+       dcl-c INADDR_ANY   0;
+       dcl-c REUSEADDR    55;
+       dcl-c SCK_STREAM   1;
+       dcl-c SOCK_DGRAM   2;
+       dcl-c SOL_socket   -1;
+       dcl-c TCP_NODELAY  10;
+       dcl-c IPPROTO_IP   0;
 
 
 
@@ -76,51 +75,41 @@ M06  D                 s             10i 0 inz(0050000)
          Secure ind;
          SrvrApp char(100);
        END-DS;
-     d entry           ds                  qualified
-     d  ChildId                      10a
-23001d  Gsecurity                     1a
-23001d  Appid                        50a
-     D sockaddrin      ds
-     D   familyin                     5i 0
-     D   portin                       5u 0
-     D   addressin                   10u 0
-     D   zeroin                       8
+       dcl-ds entry qualified;
+         ChildId   char(10);
+         Gsecurity char(1);
+         Appid     char(50);
+       end-ds;
 
-     D msghdr          ds
-     D   msg_name                      *   inz(*null)
-     D   msg_namel                   10i 0 inz(0)
-     D   msg_iov                       *   inz(%addr(iovec))
-     D   msg_iovl                    10i 0 inz(1)
-     D   msg_accr                      *   inz(*null)
-     D   msg_accrl                   10i 0 inz(%size(sockaccept))
+       dcl-ds sockaddrin;
+         familyin  int(5);
+         portin    uns(5);
+         addressin uns(10);
+         zeroin    char(8);
+       end-ds;
 
-     D iovec           ds
-     D   qdatainp                      *
-     D   qdatalen                    10i 0 inz(257)
+       dcl-ds msghdr;
+         msg_name  pointer inz(*null);
+         msg_namel int(10) inz(0);
+         msg_iov   pointer inz(%addr(iovec));
+         msg_iovl  int(10) inz(1);
+         msg_accr  pointer inz(*null);
+         msg_accrl int(10) inz(%size(sockaccept));
+       end-ds;
 
-     D inherit         ds
-     D   in_flags                    10u 0 inz(0)
-     D   in_pgroup                   10i 0 inz(0)
-     D   in_sigmask1                 10u 0 inz(0)
-     D   in_sigmask2                 10u 0 inz(0)
-     D   in_sigdef1                  10u 0 inz(0)
-     D   in_sigdef2                  10u 0 inz(0)
+       dcl-ds iovec;
+         qdatainp pointer;
+         qdatalen int(10) inz(257);
+       end-ds;
 
-23003D RcvDtaqKey      pr                  extpgm('QRCVDTAQ')
-23003D                               10a   const
-23003D                               10a   const
-23003D                                5  0
-23003D                               10a
-23003D                                5  0 const
-23003D                                2a   const
-23003D                                3  0 const
-23003D                               10a   const
-23003D                                3  0 const
-23003D                               10a   const
-23003D                               10a   Const
-23003D                                5  0 Const
-23003D                               10a   Const
-
+       dcl-ds inherit;
+         in_flags    uns(10) inz(0);
+         in_pgroup   int(10) inz(0);
+         in_sigmask1 uns(10) inz(0);
+         in_sigmask2 uns(10) inz(0);
+         in_sigdef1  uns(10) inz(0);
+         in_sigdef2  uns(10) inz(0);
+       end-ds;
 
       // Carriage Return Line Feed - Hex value of these two characters
        dcl-c CRLF const(x'0d25');
@@ -135,97 +124,66 @@ M06  D                 s             10i 0 inz(0050000)
 
 
 
-     D*---------------------------------------------------------------------
-     D* Stand Alone Fields - TOP
-     D*---------------------------------------------------------------------
-23003D w_dta30         s             10a
-     D qcmd            s            512
-     D qcmdln          s             15  5
-     D qdatain         s           5000
-     D qdata           s           5000
-     D sockaccept      s             10i 0 inz(-1)
-     D socklisten      s             10i 0 inz(-1)
-     D ChildSocket10   s             10a
-     D ChildSocket4    s              4a
-     D ChildSocketID   s             10i 0
-     D HowManyMore     s              5i 0
-     D Index           s              5i 0
-     D HBSBuffer       s            256a   based(BufferPtr)
-     D argv            s           1024a
-     D Data            s           1024a
-     D pbuffer         s               *
-     D pbuffersav      s               *   inz(%addr(rcvbuff))
-     D buffer          s          32000
-     D etoasize        s             10  0
-M02  D @SecondaryFailed...
-M02  D                 c                   const('Secondary Receive Failed.')
-M02  D F_SETFL         s             10I 0 Inz(7)
-M02  D errWouldBlock   s             10i 0 inz(3406)
-M02  D ErrorCode       s             10i 0
-M02  D RetryCounter    s              5i 0
-M02  D RecvRetry       s              5i 0
-M02  D t_timestamp     s               z
-     D flags           s             10i 0 inz(0)
-     D lensckadin      s             10i 0 inz(%size(sockaddrin))
-     D ReceiveError    s               n   inz(*off)
-     d WaitTime        s              5  0 inz(060)                             Seconds
-     D null            s              1    inz(x'00')
-     D w_dtaqnm        s             10a   inz('HBS000RQ01')
-kkg  D w_dtaqctl       s             10a   inz('HBSCNTR')
-M03  D w_dtaqlib       s             10a
-     D w_dta           s             10a
-23003D w_dtactl        s             10a
-     D w_len           s              5  0 inz(10)
-     D w_wait          s              5  0 inz(0)
-     D w_keyord        s              2a   inz('EQ')
-     D w_keylen        s              3  0 inz(0)
-     D w_keydata       s             10a   inz(*blanks)
-     D w_sendlen       s              3  0 inz(8)
-     D w_sendinf       s              8a   inz(*blanks)
-     D totr            s             10I 0 inz(0)
-     D retry           s              3  0 inz(0)
-23001d rx              s             10i 0 inz(0)
-23001D gSecurity       S               n
-23001D wwOpt           s             10i 0
+      // Stand Alone Fields
+       dcl-s w_dta30       char(10);
+       dcl-s qcmd          char(512);
+       dcl-s qcmdln        packed(15:5);
+       dcl-s qdatain       char(5000);
+       dcl-s qdata         char(5000);
+       dcl-s sockaccept    int(10) inz(-1);
+       dcl-s socklisten    int(10) inz(-1);
+       dcl-s ChildSocketID int(10);
+       dcl-s Index         int(5);
+       dcl-s argv          char(1024);
+       dcl-s Data          char(1024);
+       dcl-s pbuffer       pointer;
+       dcl-s pbuffersav    pointer inz(%addr(rcvbuff));
+       dcl-s buffer        char(32000);
+       dcl-s etoasize      packed(10);
+       dcl-c @SecondaryFailed 'Secondary Receive Failed.';
+       dcl-s F_SETFL       int(10) inz(7);
+       dcl-s errWouldBlock int(10) inz(3406);
+       dcl-s RetryCounter  int(5);
+       dcl-s RecvRetry     int(5);
+       dcl-s PartialRetry  int(5);
+       dcl-s t_timestamp   timestamp;
+       dcl-s flags         int(10) inz(0);
+       dcl-s lensckadin    int(10) inz(%size(sockaddrin));
+       dcl-s ReceiveError  ind inz(*off);
+       dcl-s WaitTime      packed(5) inz(60);          // Seconds
+       dcl-s w_dtaqnm      char(10) inz('HBS000RQ01');
+       dcl-s w_dtaqctl     char(10) inz('HBSCNTR');
+       dcl-s w_dtaqlib     char(10);
+       dcl-s w_len         packed(5) inz(10);
+       dcl-s w_wait        packed(5) inz(0);
+       dcl-s totr          int(10) inz(0);
+       dcl-s retry         packed(3) inz(0);
+       dcl-s gSecurity     ind;
           dcl-s rcvbuffl   int(10);
-          dcl-s w_content# int(10);
-          dcl-s w_reqparsed int(10);
           dcl-s w_end int(10);
           dcl-s w_starth int(10);
 23003     dcl-s rc int(10);
 
-     D totrecv         s              9  0 inz(0)
-     D totsend         s              9  0 inz(0)
+       dcl-s totrecv  packed(9) inz(0);
+       dcl-s totsend  packed(9) inz(0);
        dcl-s rcvLen int(10);
        dcl-s buffsent int(10);
 23002  //dcl-s bigbuffer varchar(32767);
 23sas  dcl-s bigbuffer varchar(2000000);
 23sas  dcl-s bigbuffero varchar(2000000) ccsid(*utf8);
        dcl-s errmsg varchar(500);
-       dcl-s errcee char(1);
        dcl-s bnkno  char(3);
        dcl-s end ind;
        dcl-s jsonerr ind;
        dcl-s h400err ind;
        dcl-s h500err ind;
-       dcl-s MsgSize int(10:0);
-       dcl-s pIgnoreMsg pointer(*proc) inz(%paddr('JHIGNM'));
 sas    //dcl-s PrmJson varchar(2000);
-sas    dcl-s PrmJson varchar(4000);
+sas    dcl-s PrmJson varchar(32000);
        dcl-s PrmHead varchar(2000);
        dcl-s PrmPtr pointer;
-       dcl-s r_attmpt packed(3);
-       dcl-s rcvbuffer char(1000);
-       dcl-s cnvrtrcv varchar(1000);
-       dcl-s rcvrslt varchar(32767);
        dcl-s w_qlen packed(5) inz(46);
        dcl-s w_qdata char(46);
        dcl-s w_qlen2 packed(5) inz(36);
-       dcl-s w_qdata2 char(36);
-       dcl-s w_pqlen packed(5) inz(10);
-       dcl-s w_pqkeylen packed(3) inz(10);
-       dcl-s w_pqkeydta char(10);
-       dcl-s w_pqdata char(10);
        dcl-s w_timestmp timestamp;
        dcl-s w_stat char(1);
        dcl-s w_sendq char(10);
@@ -244,31 +202,22 @@ sas    dcl-s PrmJson varchar(4000);
        dcl-s node like(yajl_val);
        dcl-s ActvtyTrck like(yajl_val);
        dcl-s bufferlen int(10);
-       dcl-s iPos int(10) inz(1);
        dcl-s iToGet int(10);
        dcl-s o_nonblock int(10) inz(128);
        dcl-s result int(10);
        dcl-s result2 int(10);
-       dcl-s RCVBuff char(4096);
+       dcl-s RCVBuff char(32768);
        dcl-s RcvStart   timestamp;
        dcl-s StartTime  timestamp;
        dcl-s EndTime  timestamp;
        dcl-s RCVStats char(200);
-       dcl-s RCVErr   char(200);
        dcl-s Recvstart char(50);
-
-       dcl-s gAppID char(100);
-       dcl-s gEnvHndle pointer;
-       dcl-s gIndx int(10);
-       dcl-s gSrvrNam char(20) dim(10);
-       dcl-s gSsnHndle pointer;
-       dcl-s gSsnType char(4);
 23001  dcl-c MsgEnd const(x'0d25F00d25');
 23001     dcl-s w_start int(10);
-23001     dcl-s w_buffer varchar(32000);
+23001     dcl-s w_buffer varchar(32768);
 
-      * ----- Unsure of lines above ----
-     D pcleanup        s               *   procptr    inz(%paddr('CLEANUP'))
+      // ----- Unsure of lines above ----
+       dcl-s pcleanup pointer(*proc) inz(%paddr('CLEANUP'));
 
 
 
@@ -276,56 +225,73 @@ sas    dcl-s PrmJson varchar(4000);
 23001  /include qcpysrc,HBSGSKM
 23001  /undefine HBSGSK_Proto
 
-23003 * Check Controler queue
-23003D CheckQue        pr            10i 0 opdesc
-23003D   p_dtaqnm                    10a   const
+       // Check Controller queue - receives control command into w_dta30
+       dcl-pr CheckKeyQue int(10);
+         p_dtaqnm char(10) const;
+         p_dtaqlib char(10) const;
+         p_keydata char(10) const;
+       end-pr;
 
-      * Delete data queue for Worker Jobs.
-     D Dltdtaq         pr
-     D   p_dtaqnm                    10a   const
+       // Delete data queue for Worker Jobs.
+       dcl-pr Dltdtaq;
+         p_dtaqnm char(10) const;
+       end-pr;
 
+       // QCMDEXC to run commands.
+       dcl-pr cmdexc extpgm('QCMDEXC');
+         cmdtxt   like(qcmd);
+         cmdlngth like(qcmdln);
+       end-pr;
 
-      * QCMDEXC to run commands.
-     D cmdexc          pr                  extpgm('QCMDEXC')
-     D   cmdtxt                            like(qcmd)
-     D   cmdlngth                          like(qcmdln)
+       // Prototype cleanup procedure.
+       dcl-pr cleanup;
+         Info pointer;
+       end-pr;
 
-      * Prototype cleanup procedure.
-     D cleanup         pr
-     D   Info                          *
-      * The Accept a connection.  Returns CONNECTION's socket descriptor.
-     D accept          pr            10i 0 extproc('accept')
-     D   socketdesc                  10i 0 value
-     D   sockaddrss                    *   value
-     D   addresslen                  10i 0
-      * Receive data on socket.  Returns -1 if error, else # of bytes rec'vd
-     D recv            pr            10i 0 extproc('recv')
-     D   socketdesc                  10i 0 value
-     D   buffer                        *   value
-     D   bufferlen                   10i 0 value
-     D   flags                       10i 0 value
-      * Close socket.
-     D close           pr            10i 0 extproc('close')
-     D   socketdesc                  10i 0 value
-      * The recvmsg function returns a -1 if unsuccessful.
-     D recvmsg         pr            10i 0 extproc('recvmsg')
-     D   socketdesc                  10i 0 value
-     D   msghdr                        *   value
-     D   flags                       10i 0 value
-      * The Send function returns a -1 if unsuccessful. If
-      * successful, it returns the number of bytes sent.
-     D send            pr            10i 0 extproc('send')
-     D   socketdesc                  10i 0 value
-     D   buffer                        *   value
-     D   bufferlen                   10i 0 value
-     D   flags                       10i 0 value
-      // The SetSockOpt function returns a -1 if unsuccessful.
-23001D setsockopt      pr            10i 0 extproc('setsockopt')
-23001D   socketdesc                  10i 0 value
-23001D   level                       10i 0 value
-23001D   optionname                  10i 0 value
-23001D   optionvalu                    *   value
-23001D   optionlen                   10i 0 value
+       // Accept a connection. Returns CONNECTION's socket descriptor.
+       dcl-pr accept int(10) extproc('accept');
+         socketdesc int(10) value;
+         sockaddrss pointer value;
+         addresslen int(10);
+       end-pr;
+
+       // Receive data on socket. Returns -1 if error, else # of bytes recv'd.
+       dcl-pr recv int(10) extproc('recv');
+         socketdesc int(10) value;
+         buffer     pointer value;
+         bufferlen  int(10) value;
+         flags      int(10) value;
+       end-pr;
+
+       // Close socket.
+       dcl-pr close int(10) extproc('close');
+         socketdesc int(10) value;
+       end-pr;
+
+       // The recvmsg function returns a -1 if unsuccessful.
+       dcl-pr recvmsg int(10) extproc('recvmsg');
+         socketdesc int(10) value;
+         msghdr     pointer value;
+         flags      int(10) value;
+       end-pr;
+
+       // The Send function returns a -1 if unsuccessful.
+       // If successful, it returns the number of bytes sent.
+       dcl-pr send int(10) extproc('send');
+         socketdesc int(10) value;
+         buffer     pointer value;
+         bufferlen  int(10) value;
+         flags      int(10) value;
+       end-pr;
+
+       // The SetSockOpt function returns a -1 if unsuccessful.
+       dcl-pr setsockopt int(10) extproc('setsockopt');
+         socketdesc int(10) value;
+         level      int(10) value;
+         optionname int(10) value;
+         optionvalu pointer value;
+         optionlen  int(10) value;
+       end-pr;
 
 
 
@@ -340,17 +306,12 @@ sas    dcl-s PrmJson varchar(4000);
 
 
 
-      * The FCntl function returns a -1 if unsuccessful.
-
-     D fcntl           pr            10i 0 extproc('fcntl')
-     D                               10i 0 value
-     D   F_SETFL                     10i 0 value
-     D   O_NONBLOCK                  10i 0 value options(*nopass)
-
-      * Create Data queue for Recieve.
-     D crtdtaq         pr
-     D   p_dtaqnm                    10a   const
-     D               euds                  extname(jhapar)
+       // The FCntl function returns a -1 if unsuccessful.
+       dcl-pr fcntl int(10) extproc('fcntl');
+         socketdesc int(10) value;
+         F_SETFL    int(10) value;
+         O_NONBLOCK int(10) value options(*nopass);
+       end-pr;
 
 
 
@@ -367,7 +328,7 @@ sas    dcl-s PrmJson varchar(4000);
 
 
        dcl-pr CheckHeader int(10);
-         i_buffer char(32000) value;
+         i_buffer char(32768) const;
          w_starth int(10)  value;
        END-PR;
 
@@ -431,13 +392,19 @@ sas    dcl-s PrmJson varchar(4000);
          clear entry;
          entry    = %subst(argv:1);
        Exsr Initialization;
+       hbstools_CommLog(660001:'[CHD1-01] Init done' +
+         ' dtaqlib=' + w_dtaqlib);
 
          ChildSocketID = %dec(entry.ChildId:4:0);
+       hbstools_CommLog(660001:'[CHD1-02] ChildSocketID=' +
+         %char(ChildSocketID));
 
          // Receive the listen descriptor from the server
              Result = recvmsg(ChildSocketID:
                             %addr(msghdr):
                             flags);
+       hbstools_CommLog(660001:'[CHD1-03] recvmsg result=' +
+         %char(result) + ' sockaccept=' + %char(sockaccept));
         // format w_dtaqnm with pos 2 - 4 of job name
        bnkno = %subst(psjobnm:2:3);
        W_dtaqnm = 'HBS' + bnkno + 'RQ01';
@@ -447,44 +414,22 @@ sas    dcl-s PrmJson varchar(4000);
            ChkDtaq2(w_sendq);
 
 23003  W_dtaqctl = 'HBSCNTR' + bnkno ;
+       hbstools_CommLog(660001:'[CHD1-04] Queues set' +
+         ' dtaqnm=' + w_dtaqnm +
+         ' dtaqctl=' + w_dtaqctl +
+         ' sendq=' + w_sendq +
+         ' lib=' + w_dtaqlib);
 
        DoW not *InLr;
+       hbstools_CommLog(660001:'[CHD1-05] DoW top' +
+         ' sockaccept=' + %char(sockaccept));
 
        // Accept a connection - moved to control program
          //  sockAccept  =  accept(sockListen:
          //                         %addr(sockaddrin):
          //                         LenSckAdIn);
          // ErrCheck(Sockaccept)  end program?
-23001       If gSecurity = *on;
-23001              gAppID = entry.appid;
-23001           gSSnType = 'RECV';
-
-             //  this line is for debug purposes only
-
-                  //  rx = sleep(WaitTime);
-23001         MONITOR;
-23001         If hbssock_CreateHandle(gEnvHndle:gAppID:gSSnType:gSecurity) <> 0;
-23001           hbstools_Commlog(560010);
-23001           *inlr = *on;
-23001           Iter;
-23001         ENDIF;
-23001 * Disable Nagle's Algorithm
-23001c                   eval      wwOpt = 1
-23001c                   eval      result = setsockopt( SockAccept
-23001c                                            : IPPROTO_IP
-23001c                                            : TCP_NODELAY
-23001c                                            : %addr(wwOpt)
-23001C                                            : %size(wwOpt) )
-23001         If hbssock_CreateSession(sockAccept:gEnvHndle:gSsnHndle) <> 0;
-23001                 hbstools_Commlog(560020);
-23001           *inlr = *on;
-23001           Iter;
-23001         ENDIF;
-23001         ON-ERROR;
-23001            hbstools_CommLog(699999:'ERROR CALLING HBSGSKM');
-23001         ENDMON;
-
-            ENDIF;
+         // We don't currently use SSL
 M02
 M02      result = fcntl(sockaccept:
 M02                  F_SETFL :
@@ -502,8 +447,8 @@ M02      ErrCheck(result);
                    Leave;
                  ENDIF;
 
-kkg      // check keyed dataq if any tasks for the worker
-kkg      CheckQue(w_dtaqctl);
+         // check keyed dataq if any tasks for the worker
+         CheckKeyQue(w_dtaqctl:w_dtaqlib:psjobnm);
 
          // check if instructions to end job and log
 23003    if w_dta30  = 'ENDJOB';
@@ -519,9 +464,6 @@ kkg      CheckQue(w_dtaqctl);
        // write to recv that the recv job is ending
 
        WriteEndr();       //write to hbstrans/hbsreq
-          hbssock_CloseSession(gSsnHndle);
-          hbssock_CloseHandle(gEnvHndle);
-
        Result = close(sockAccept);
 21001  dltdtaq(w_sendq);
        EndTime = %timestamp();
@@ -541,12 +483,6 @@ kkg      CheckQue(w_dtaqctl);
        Begsr Initialization;
 
           StartTime = %timestamp();
-23001     if entry.gsecurity = 'Y';
-23001       gSecurity = *on;
-23001     else;
-23001       gSecurity = *off;
-23001     endif;
-
           // read tables to determine what security to use
          Exec SQL
            Set Option
@@ -601,13 +537,13 @@ M03    w_dtaqlib = d_BankLib;
       //---------------------------------------------------------
         dcl-proc CheckHeader;
           dcl-pi *n int(10);
-            i_buffer char(32000) value;
+            i_buffer char(32768) const;
             w_starth int(10)  value;
           END-PI;
 
           // dcl-s w_buffer varchar(32000);
           dcl-s w_char char(1);
-          dcl-s w_contlen char(4);
+          dcl-s w_contlen char(5);
           dcl-s w_len int(10);
           dcl-s w_endh int(10);
           // dcl-s w_start int(10);
@@ -676,7 +612,7 @@ M03    w_dtaqlib = d_BankLib;
               w_indx2 += 1;
             endif;
 
-            if w_indx2 > 4;
+            if w_indx2 > 5;
               leave;
            else;
              w_char = *blanks;
@@ -903,7 +839,7 @@ M03    w_dtaqlib = d_BankLib;
           totlrcv = 0;
           W_starth  = 1;
           etoasize =  0;
-          iToGet = 10000;
+          iToGet = 32768;
           result = 0;
           result2 = 0;
           pbuffer = pbuffersav;
@@ -912,9 +848,9 @@ M03    w_dtaqlib = d_BankLib;
 
            ///  rx = sleep(WaitTime);          // for testing only
 
-          dow itoget > 0;                // stay in loop until end of connection
+          dow *on;                       // loop exits only via Leave/Return
 
-kkg      CheckQue(w_dtaqctl);
+         CheckKeyQue(w_dtaqctl:w_dtaqlib:psjobnm);
 23003    if w_dta30  = 'ENDJOB';
 23003           RcvStats = 'Receiver Job#: ' +   Psjobnm +
 23003                %char(psjob#) + 'Normal End';
@@ -924,44 +860,11 @@ kkg      CheckQue(w_dtaqctl);
                      // Iter here if content length found but not json do not reset below
             RcvStart = %timestamp();
 
-23001       If gSecurity = *on;
-23001          result = 0;
-23001          result2 = 0;
-23001         result = hbssock_Read(gSsnHndle:pbuffer:iToGet:rcvLen);
-
-23001         If result = 0;
-23001            If rcvLen = 0;
-23001                hbstools_CommLog(result:'Zero recieved zero result');
-23001                result  =  -1;
-23001            else;
-23001
-23001            If rcvlen > 0;
-23001              result = rcvLen;
-23001                hbstools_CommLog(result:'Result 0 and rcvlen');
-23001              result2 = 0;
-23001            endif;
-23001            endif;
-
-23001         else;                    // result not 0
-23001           if result = 502;
-23001              result2 = 3406;
-23001             result  =  -1;
-23001           else;
-23001
-23001           if result  <> 0 and result <> 502;
-23001                hbstools_CommLog(result:'After read  not 502');
-23001             result2 =  result;
-23001             result  =  -1;
-23001            endif;
-23001         ENDIF;    // result not zero
-23001         ENDIF;    // READ FOR SSL SECURITY
-
-23001       else;
+              // We don't currently use SSL
               result = recv(sockaccept:pbuffer:iToGet:0);
               if result < 0;
                 result2 = hbstools_ErrCnvrt(result);
               endif;
-            ENDIF;
 
 
             select;
@@ -979,15 +882,11 @@ M06               usleep(FiftyMilliseconds);
                 Return *ON;
 
 
-              when result = 0;    //  nothing to recieve iter
-                usleep(FiftyMilliseconds);
-                recvretry += 1;
-                if recvretry > 60;
-                   recvretry = 0;
-                   hbstools_CommLog(600010:'Max return 0');
-                   Return *On;
-                Endif;
-                iter;            // usleep and iter X number of times
+              when result = 0;    // TCP graceful close — remote side closed connection
+                // result=0 means the client sent a TCP FIN (EOF). On a non-blocking
+                // socket this is the definitive signal that the connection is done.
+                // Exit immediately — no retry is appropriate here.
+                Return *On;
 
             ENDSL;
 
@@ -1008,7 +907,7 @@ M06               usleep(FiftyMilliseconds);
 
                dow morereq > 0;    // get all requests from buffer
                   if w_end > 0 ;  //entire req parsed found end after starth
-                     recvretry = 0;
+                     partialretry = 0;
                      WriteRecv();       //write to hbstrans/hbsreq
                      TotRecv += 1;      // total recieved
                      w_starth = jsonstrt + content_length + 1;  // starting point for next header
@@ -1016,13 +915,16 @@ M06               usleep(FiftyMilliseconds);
                        leave;
                      ENDIF;
                    Else;   // partial request in buffer - w_end not found
-                     recvretry += 1;
-                     if recvretry < 6;
+                     // partialretry: counts recv attempts waiting for the rest of
+                     // a message that arrived incomplete. After 5 attempts (~250ms),
+                     // log and abandon the partial message.
+                     partialretry += 1;
+                     if partialretry < 6;
 M06                    usleep(FiftyMilliseconds);
                        Iter; // go to recv x number of times
                      else;   // greater then 5 tries
                      morereq   = 0;
-                     recvretry = 0;
+                     partialretry = 0;
                      hbstools_CommLog(600008:'Partial recv' + rcvbuff );
                              // log partial recieved in hbscomlog
                              // check if other requests on buffer to process
@@ -1035,9 +937,10 @@ M06                    usleep(FiftyMilliseconds);
                enddo;        // all requests and partial request parsed out of buffer
 
 
-                     recvretry = 0;
+                     recvretry = 0;  // not used after result=0 fix; kept for safety
+                     partialretry = 0;
                      w_starth = 1;       // new buffer recieved .. start at begin
-                     ItoGet = 10000;    //Set Itoget back to 10000
+                     ItoGet = 32768;    //Set Itoget back to 32768
                      totlrcv = 0;
                      w_end   = 0;
                      Morereq = 0;
@@ -1125,11 +1028,12 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
                HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
              values
               (:w_guid2, :w_pguid, :w_guid,
-               'RQ', :w_stat, 'N', :prmhead);
+               'IN', :w_stat, 'N', :prmhead);
 
            if sqlstate <> '00000';
-             hbstools_CommLog(660005:'HBSTRANS insert failed SQLSTATE=' + sqlstate
-                                    + ' GUID=' + w_guid2);
+             hbstools_CommLog(660005:
+               'HBSTRANS insert failed SQLSTATE=' + sqlstate + 
+                ' GUID=' + w_guid2);
              return *off;
            endif;
 
@@ -1140,8 +1044,9 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
                values (:w_guid2, :prmjson);
 
            if sqlstate <> '00000';
-             hbstools_CommLog(660005:'HBSREQ insert failed SQLSTATE=' + sqlstate
-                                    + ' GUID=' + w_guid2);
+             hbstools_CommLog(660005:
+               'HBSREQ insert failed SQLSTATE=' + sqlstate + 
+                ' GUID=' + w_guid2);
              return *off;
            endif;
 
@@ -1299,23 +1204,8 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
              totr = 0;
              retry = 0;
              dou totr   = bufferlen;
-23001             If gSecurity = *on;
-23001               buffsent = 0;
-23001
-23001               result = hbssock_write(gSsnHndle:%addr(bigbuffer:*data)
-23001                                      :bufferlen:buffsent);
-23001
-23001               If buffsent = 0;
-23001                 RESULT = -1;
-23001                 hbstools_Commlog(45003:'SSL write fail for:'  +
-23001                                    %trim(w_guid));
-23001               eLSE;
-23001                 result = buffsent;
-23001               endif;
-23001
-23001             else;
-23sas             result = send(sockaccept:%addr(bigbuffero:*data):bufferlen:0);
-23001          Endif;
+              // We don't currently use SSL
+              result = send(sockaccept:%addr(bigbuffero:*data):bufferlen:0);
 
                totr += result;
                if result < 0;
@@ -1379,19 +1269,8 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
           totr = 0;
           retry = 0;
           dou totr   = bufferlen;
-23001       If gSecurity = *on;
-23001               buffsent = 0;
-
-23001               result = hbssock_write(gSsnHndle:%addr(bigbuffer:*data)
-23001                                      :bufferlen:buffsent);
-
-23001               If buffsent < bufferlen;
-23001                 hbstools_Commlog(45003:'SSL write fail for:'  +
-23001                                    %trim(w_guid));
-23001               endif;
-23001       else;
+              // We don't currently use SSL
               result = send(sockaccept:%addr(bigbuffer:*data):bufferlen:0);
-23001       Endif;
 
             totr += result;
             if result < 0;
@@ -1532,7 +1411,7 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
                HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
              values
               (:w_guid2, :w_guid, :w_guid,
-               'RQ', :w_stat, 'N', :prmhead);
+               'IN', :w_stat, 'N', :prmhead);
 
            Exec SQL
              insert into HBSREQ
@@ -1544,45 +1423,40 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
 
         end-proc;
 23003
-23003 *--------------------------------------------------------\
-      *  Check Controller queu and react to requests           |
-      *--------------------------------------------------------/
-     P CheckQue        b
-     D CheckQue        pi            10i 0 opdesc
-     D   p_dtaqnm                    10a   const
+      //---------------------------------------------------------
+      // CheckKeyQue - Check Controller queue and react to requests
+      //               Receives only entries matching this job (psjobnm key).
+      //               Replaces QRCVDTAQ API with SQL equivalent
+      //               (aligned with HBSHANDLR.CheckKeyQue pattern).
+      //---------------------------------------------------------
+        dcl-proc CheckKeyQue;
+          dcl-pi *n int(10);
+            p_dtaqnm char(10) const;
+            p_dtaqlib char(10) const;
+            p_keydata char(10) const;
+          end-pi;
 
-     D ck_datqnm       s             10a   inz(*blanks)
-     D ck_datlib       s             10a   inz(*blanks)
-     D w_len           s              5  0 inz(10)
-     D w_wait          s              5  0 inz(0)
-     D w_keyord        s              2a   inz('NE')
-     D w_keylen        s              3  0 inz(10)
-     D w_keydata       s             10a   inz(*blanks)
-     D w_sendlen       s              3  0 inz(8)
-     D w_sendinf       s              8a   inz(*blanks)
-     D DataQLen        s              5  0 Inz(40)
-     D Qdlen           s              5  0
+          // Receive only entries matching this job's key from the controller queue.
+          // Matched entry is removed. Result is placed in global w_dta30.
+          w_dta30 = *blanks;
 
-21001D w_ErrDS         ds
-21001D   w_prvbyte             1      4i 0
-21001D   w_aftbyte             5      8i 0
-21001D   w_excpID              9     15
-21001D   w_reserv             16     16
+          exec sql
+            select cast(message_data as char(10))
+            into :w_dta30
+            from table(
+              qsys2.receive_data_queue(
+                data_queue         => :p_dtaqnm,
+                data_queue_library => :p_dtaqlib,
+                remove             => 'YES',
+                wait_time          => 0,
+                key_data           => :p_keydata,
+                key_order          => 'EQ')) as dq
+            fetch first 1 row only;
 
+          if sqlstate = '02000';
+            w_dta30 = *blanks;
+          endif;
 
-      /free
-          // change to recieve only entries for B###C job matching the controljob
-          // dataq entry should be deleted when received
-23003     w_dta30  = *blanks;
-23003     ck_datqnm = p_dtaqnm;
-23003     ck_datlib = W_dtaqlib;
-23003
-23003     qdlen = %len(W_dta30);
-23003     RcvDtaqKey(ck_datqnm:ck_datlib:qdlen:w_dta30: 0
-23003                    : 'EQ' : 10 : psjobnm : 0 :*Blanks
-                    : '*NO' : DataqLen : w_ErrDS) ;
+          return rc;
 
-        return rc;
-      /end-free
-23003P CheckQue        e
-23001
+        end-proc;

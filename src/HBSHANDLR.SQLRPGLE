@@ -53,7 +53,7 @@ dcl-pr HandleTestMode;
 pRcvGUID char(46) const;
 end-pr;
 
-dcl-pr JsonError varchar(2000000);
+dcl-pr JsonError varchar(32000);
 pErrNum int(10) const;
 pReqCtx pointer const;
 end-pr;
@@ -621,7 +621,7 @@ end-proc;
 // JsonError - Create JSON error response
 //---------------------------------------------------------
 dcl-proc JsonError;
-dcl-pi *n varchar(2000000);
+dcl-pi *n varchar(32000);
 pErrNum int(10) const;
 pReqCtx pointer const;
 end-pi;
@@ -850,6 +850,7 @@ exec sql
     update HBSTRANS
     set HTSNAME   = :wReqCtx.HostService,
         HTPNAME   = :wReqCtx.HostProgram,
+        HTRCVSTS  = 'Y',
         HTSNDSTS  = :pStatus
     where HTGUID = :wReqData.r_pguid;
 
@@ -937,11 +938,12 @@ exec sql
         values (:wReqData.r_pguid, :SqlJSON);
 
 if SQLstate = '00000';
-    // Write response header and attempt count back to HBSTRANS
+    // Write response header, attempt count, and send timestamp back to HBSTRANS
     exec sql
         update HBSTRANS
            set HTRESHDR   = :wHeadr,
-               HTATTEMPTS = :pAttempt
+               HTATTEMPTS = :pAttempt,
+               HTSNDTS    = CURRENT_TIMESTAMP
          where HTGUID = :wReqData.r_pguid;
 
     // Do not write to send data queue if running test

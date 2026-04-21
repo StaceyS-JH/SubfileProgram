@@ -230,7 +230,140 @@ A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 
     **Decision point is `HBSHANDLR`**, not `HBSWRITER`. Since `HBSHANDLR` constructs the response and already knows the success/error outcome before calling `WrtSend`, it can simply skip creating the User Space and sending the DQ message when storage is not required — nothing reaches `HBSWRITER` at all for suppressed records. This keeps `HBSWRITER` simple and stateless. The `LogReqData`/`LogRespData` values are already available in `gCrtLogEvent`/`gAppErrLog` style globals once `GetWorkData` returns, requiring no additional queries.
 
-## 7. Benefits
+## 8. HBSCHILD1 Cleanup Work (April 2026)
+
+A focused cleanup pass was performed on `HBSCHILD1.SQLRPGLE` during April 2026 to address several technical debt items identified in code review. These changes are complete and in the local codebase. The IBM i source member should be updated at next deployment.
+
+### 8.1. SSL/TLS Code Removed
+
+The original M02/23001 modifications added an SSL/TLS upgrade path using `hbssock_*` GSKit APIs (`hbssock_Read`, `hbssock_write`, `hbssock_CloseSession`, `hbssock_CloseHandle`). This path was controlled by `gSecurity` and `entry.Gsecurity` flags.
+
+Since BSL no longer uses SSL/TLS for inbound connections, all conditional SSL blocks have been removed from 6 locations:
+- Main `DoW` loop — SSL handle/session creation
+- Post-`DoW` cleanup — `hbssock_CloseSession` / `hbssock_CloseHandle`
+- `Initialization` subroutine — `entry.gsecurity` initialization
+- `RecvDta` — SSL read branch (`hbssock_Read`)
+- `SendDta` — SSL write branch (`hbssock_write`)
+- `SendDtaErr` — SSL write branch (`hbssock_write`)
+
+The plain `recv()` / `send()` paths are retained. Each location is marked `// We don't currently use SSL`. If SSL is needed in future, the GSKit approach should be re-evaluated against IBM i TLS socket options.
+
+The `entry.Gsecurity` and `gSecurity` fields remain declared (they are part of the `entry` DS and global declarations respectively) but are no longer referenced in logic. They can be removed in a future cleanup if the DS layout permits.
+
+### 8.2. Request Buffer Sizes Increased to 32K
+
+The original buffer sizing was inconsistent and too small — `rcvbuff` was `char(4096)` but `iToGet` passed `10000` to `recv()`, creating a potential buffer overrun. `w_contlen` was `char(4)`, limiting Content-Length parsing to 4 digits (max 9999 bytes).
+
+All buffer-related fields were updated to a consistent 32K baseline:
+
+| Field | Before | After |
+|---|---|---|
+| `rcvbuff` | `char(4096)` | `char(32768)` |
+| `iToGet` (init + reset) | `10000` | `32768` |
+| `w_contlen` | `char(4)`, guard `> 4` | `char(5)`, guard `> 5` |
+| `PrmJson` | `varchar(4000)` | `varchar(32000)` |
+| `CheckHeader` `i_buffer` PI | `char(32000)` | `char(32768)` |
+| `w_buffer` (CheckHeader) | `varchar(32000)` | `varchar(32768)` |
+
+Note: `PrmJson` is intentionally 32,000 rather than 32,768 — the ~768 byte gap reserves headroom for the HTTP header that precedes the JSON body in `rcvbuff`.
+
+Response buffers (`bigbuffer`, `bigbuffero`, `SndBuff`) remain at `varchar(2000000)` — unchanged.
+
+### 8.3. `recvretry` Split into Two Independent Counters
+
+`recvretry` was doing double duty — it was incremented in two unrelated retry scenarios with different thresholds, causing counter bleed-through between them.
+
+**Scenario 1 (outer loop):** `recv()` returns 0 — counted consecutive zero-byte reads, gave up after 60 attempts (~3 seconds).  
+**Scenario 2 (inner `dow morereq` loop):** partial message in buffer — counted recv attempts waiting for the rest of an incomplete message, gave up after 5 attempts (~250ms).
+
+The counters were split:
+- `recvretry` — retained for outer loop scenario 1
+- `partialretry` (new `PartialRetry s 5i 0`) — used exclusively in the inner partial-receive loop
+
+This eliminates the bleed-through where partial retries from one scenario consumed the budget for the other.
+
+### 8.4. `result = 0` Handling Fixed — Performance Impact
+
+**Problem:** On a non-blocking TCP socket, `recv()` returning `0` means the remote side has closed the connection (TCP graceful EOF / FIN). It does **not** mean "no data available" — that is signalled by `EWOULDBLOCK` (errno 3406, handled in the `result < 0` branch).
+
+The original code treated `result = 0` as a retriable condition, spinning for up to 60 × 50ms = **3 seconds** before closing the connection. Since every successfully completed transaction ends with the client closing its side (result = 0 is the normal conclusion), this imposed a mandatory 3-second dead period after every request before the worker could process the next connection.
+
+**Before:**
+
+```rpgle
+when result = 0;    // TCP graceful close or no data on non-blocking socket
+  // recvretry: counts consecutive result=0 returns.
+  // After 60 attempts (~3 sec), assume connection is dead and exit.
+  usleep(FiftyMilliseconds);
+  recvretry += 1;
+  if recvretry > 60;
+     recvretry = 0;
+     hbstools_CommLog(600010:'Max return 0');
+     Return *On;
+  Endif;
+  iter;            // usleep and iter X number of times
+```
+
+**After:**
+
+```rpgle
+when result = 0;    // TCP graceful close — remote side closed connection
+  // result=0 means the client sent a TCP FIN (EOF). On a non-blocking
+  // socket this is the definitive signal that the connection is done.
+  // Exit immediately — no retry is appropriate here.
+  Return *On;
+```
+
+The `recvretry` counter and associated `hbstools_CommLog(600010:...)` call are now unused by this branch and can be removed in a future cleanup. The `PartialRetry` counter reset at end-of-buffer still clears `recvretry` defensively.
+
+**Throughput impact:** With the original code, a worker handling short-lived connections (one request per connection, typical for internal BSL) was effectively limited to ~20 requests per worker per minute. With immediate exit, the worker is available for the next connection as soon as the response is sent.
+
+**Keep-Alive clarification:** This fix is valid regardless of whether the client uses HTTP Keep-Alive (multiple requests per connection). On a non-blocking TCP socket, the three `recv()` outcomes are mutually exclusive:
+
+| `recv()` result | Meaning |
+|---|---|
+| `> 0` | Data received — *n* bytes |
+| `< 0` with `errno = 3406` (`EWOULDBLOCK`) | Socket open, no data **yet** |
+| `= 0` | Remote sent TCP FIN — connection **definitively closed** |
+
+With Keep-Alive, the idle period *between* requests produces `EWOULDBLOCK` (`result < 0`), which the existing code already handles correctly — it calls `SendDta()` and loops. `result = 0` is never the "waiting for the next request" signal. It signals a TCP FIN, which occurs exactly once per connection at the very end, whether the client sent 1 request or 50 over that connection. Immediate exit is the correct response in all cases.
+
+If BSL clients do use Keep-Alive, the per-connection throughput impact of the original bug is smaller (the 3-second penalty hit once per connection rather than once per request), but the fix is still correct and eliminates an unnecessary delay.
+
+### 8.5. Unused Variable Cleanup
+
+Approximately 30 module-level standalone variables were identified as dead code — declared but never referenced in any logic path. They fall into three categories:
+
+- **Old socket/architecture remnants:** `ChildSocket10`, `ChildSocket4`, `HowManyMore`, `HBSBuffer` (and its `BufferPtr`), `ErrorCode` — left over from an earlier socket model before `ChildSocketID int(10)` was introduced.
+- **SSL-era variables:** `rx`, `wwOpt`, `gSecurity` (logic removed), `gAppID`, `gEnvHndle`, `gIndx`, `gSrvrNam`, `gSsnHndle`, `gSsnType` — all tied to the GSKit SSL path removed in section 8.1.
+- **Keyed data queue variables (global):** `null`, `w_dta`, `w_dtactl`, `w_keyord`, `w_keylen`, `w_keydata`, `w_sendlen`, `w_sendinf` — these were used with the legacy `QRCVDTAQ` API call (see 8.6); they were shadowed by identical local variables inside `CheckQue` and served no purpose at module level.
+- **Receive-side processing:** `w_content#`, `w_reqparsed`, `r_attmpt`, `rcvbuffer`, `cnvrtrcv`, `rcvrslt`, `errcee`, `MsgSize`, `pIgnoreMsg`, `iPos`, `RCVErr`, `w_qdata2`, `w_pqlen`, `w_pqkeylen`, `w_pqkeydta`, `w_pqdata` — various accumulation counters and conversion buffers that were displaced by the current implementation but never removed.
+
+All have been removed. `gSecurity` is still declared (it is part of the `entry` DS subfield layout) but is no longer referenced in logic.
+
+### 8.6. `CheckQue` Refactored to SQL (`CheckKeyQue`)
+
+`CheckQue` used the legacy `QRCVDTAQ` IBM i API to receive entries from the controller data queue, matching on a 10-character key (the job name `psjobnm`). This required a 13-parameter fixed-positional API call, an error DS, and 8 local variables — none of which provided value over the SQL equivalent.
+
+The proc has been replaced with `CheckKeyQue`, aligned with the identical pattern already in use in `HBSHANDLR`:
+
+**Before:** Fixed-format `P/D` proc with `QRCVDTAQ` API, 8 local variables, error DS, `opdesc` on the prototype.
+
+**After:** Free-format `dcl-proc` with `QSYS2.RECEIVE_DATA_QUEUE` SQL table function, no local variables, `sqlstate = '02000'` handles the no-data case cleanly.
+
+The new signature adds two explicit parameters (`p_dtaqlib`, `p_keydata`) that were previously pulled from globals implicitly, making the dependencies visible at the call site.
+
+Both call sites updated:
+- Main `DoW` loop: `CheckQue(w_dtaqctl)` → `CheckKeyQue(w_dtaqctl:w_dtaqlib:psjobnm)`
+- `RecvDta` inner loop: same change
+
+The `QRCVDTAQ` prototype (`RcvDtaqKey`) has been removed entirely.
+
+### 8.7. `dow itoget > 0` Loop Condition Corrected
+
+The outer receive loop in `RecvDta` was `dow itoget > 0`, but `iToGet` is reset to 32768 at the bottom of every cycle and is never set to 0 or below by any code path. The loop exited exclusively via `Leave` statements — the `dow` condition was never actually false.
+
+Changed to `dow *on` with a comment, which matches the true intent and removes the misleading suggestion that `iToGet` drives termination.
 
 *   **Maximum Performance:** Client response time is no longer impacted by database write or (with Option B) program call latency.
 *   **Increased Throughput (TPS):** Handler and receiver jobs are freed up much faster, allowing them to process more transactions.
