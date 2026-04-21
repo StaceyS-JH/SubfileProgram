@@ -21,7 +21,7 @@ ctl-opt nomain;
 // Data Structures
 //---------------------------------------------------------
 
-dcl-ds RecvDta;
+dcl-ds RecvDta qualified template;
   r_pguid char(36);
   r_aguid char(36);
   r_clob varchar(2000000);
@@ -203,7 +203,7 @@ end-pi;
   dcl-ds wRecv;
     wr_pguid char(36);
     wr_aguid char(36);
-    wr_header varchar(5000);
+    wr_header varchar(1024);
     wr_sql_clob sqltype(CLOB:2000000);
   end-ds;
 
@@ -213,7 +213,7 @@ end-pi;
 
   exec sql
     select r.HRGUID, t.HTRQAGUID,
-           cast(t.HTREQHDR as varchar(5000)),
+           t.HTREQHDR,
            r.HRBODY
       into :wRecv
       from HBSREQ r
@@ -260,7 +260,7 @@ end-proc;
 //---------------------------------------------------------
 dcl-proc FindSrvc;
 dcl-pi *n int(10);
-  pRecvHdr char(5000) const;
+  pRecvHdr char(1024) const;
   pVersion likeds(dsVersion);
 end-pi;
 
@@ -447,7 +447,7 @@ end-pi;
   dcl-ds wRecv;
     wr_pguid char(36);
     wr_aguid char(36);
-    wr_header varchar(5000);
+    wr_header varchar(1024);
     wr_sql_clob sqltype(CLOB:2000000);
   end-ds;
 
@@ -457,7 +457,7 @@ end-pi;
 
   exec sql
     select r.HRGUID, t.HTRQAGUID,
-           cast(t.HTREQHDR as varchar(5000)),
+           t.HTREQHDR,
            r.HRBODY
       into :wRecv
       from HBSREQ r
