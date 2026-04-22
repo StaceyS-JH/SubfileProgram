@@ -371,4 +371,448 @@ Changed to `dow *on` with a comment, which matches the true intent and removes t
 *   **Architectural Flexibility:** The design provides a clear choice to balance performance needs against operational requirements.
 *   **Guaranteed Cleanup:** The combination of sequential ownership and a scavenger job provides a multi-layered defense against orphaned system objects.
 
+---
+
+## 9. HBSCONTRL1 Cleanup Work (April 2026)
+
+A focused cleanup pass was begun on `HBSCONTRL1.SQLRPGLE` during April 2026 based on a code review that identified thirteen issues (four critical, four high, five medium). See `docs/HBSCONTRL1-analysis.md` for the full inventory. The changes below are the first round applied to the local codebase. The IBM i source member should be updated at next deployment.
+
+### 9.1. Scheduler Throttled to a Configurable Interval
+
+**Problem (Analysis Issue #9):** `Scheduler()` was called unconditionally on every pass of the main `dow *inlr = *off` loop. The loop already runs at least every 100ms due to the `usleep(0100000)` call at the bottom. `Scheduler()` reads all `HBSFSCHED` records for the bank, performs timestamp comparisons, and issues `UPDATE` statements on every pass — resulting in potentially hundreds of thousands of unnecessary file I/O operations per day.
+
+**Solution:** The `Scheduler()` call is now guarded by a timestamp comparison against a `LastSchedRun` module-level variable. The check interval is controlled by a named constant so it can be adjusted without touching logic.
+
+**Changes made:**
+
+1. Added a named constant near the existing `dcl-c` declarations:
+
+```rpgle
+dcl-c cSchedIntv const(5);    // Scheduler check interval in seconds
+```
+
+Changing this single value and recompiling adjusts the interval for the entire program. Set to `1` for once-per-second, `60` for once-per-minute, etc.
+
+2. Added a `LastSchedRun` timestamp variable alongside the existing `rstime`/`retime` fields:
+
+```rpgle
+23001D LastSchedRun  s  z  inz(*loval)
+```
+
+Initialized to `*loval` so the scheduler runs on the very first loop iteration rather than waiting one full interval cold on startup.
+
+3. Wrapped the `Scheduler()` call in the main loop:
+
+**Before:**
+```rpgle
+23001    // check scheduler for any jobs
+23001    result = Scheduler();
+```
+
+**After:**
+```rpgle
+23001    // check scheduler for any jobs - throttled to cSchedIntv seconds
+23001    if %diff(%timestamp():LastSchedRun:*seconds) >= cSchedIntv;
+23001      result = Scheduler();
+23001      LastSchedRun = %timestamp();
+23001    endif;
+```
+
+**Impact:** With the 100ms `usleep`, `Scheduler()` was previously called ~10 times per second, ~600 times per minute, ~864,000 times per day. At the default `cSchedIntv(5)`, it runs once every 5 seconds — approximately a **50x reduction** in `HBSFSCHED` read and update activity. The scheduler's minimum time resolution is unchanged: any job whose `BSNEXTDTE` falls within the 5-second window is still picked up on the very next check after it becomes due.
+
+### 9.2. Multi-Port Bugs Fixed (Phase A)
+
+**Background:** `HBSCONTRL1` already contains a multi-port architecture — arrays `rcvport(8)`, `socklist(8)`, `totrecv(8)`, and a `For I by 1 to totports` accept loop all anticipate multiple simultaneous listen sockets. However, four bugs in the `RecvJobs` procedure and supporting code prevented this from working correctly when more than one port is active. These bugs had no visible impact in production because only one port has ever been configured (`child# = 1`, `totports = 1`), making all four bugs benign in the single-port case.
+
+A full inventory of all thirteen issues is in `docs/HBSCONTRL1-analysis.md`. The four multi-port bugs (analysis issues #1, #2, #3, #5) plus two supporting fixes (GetParms loop, EndRecv loop) were applied in this pass.
+
+#### Why duplicate job names do not break the current single-port system
+
+IBM i differentiates jobs by the triplet `jobname/username/jobnumber`. Even if two jobs have the same name, they are distinct system objects — `B220R/BANKUSR/111111` and `B220R/BANKUSR/111112` are unambiguous. With `child# = 1` and `totports = 1`, exactly one worker is ever named `B220R`, so there is no ambiguity.
+
+The keyed data queue (used by `EndRecv` to signal workers) delivers **one entry per `RcvDtaqKey` call**, matched by key string. With one worker and one signal there is no race. With multiple ports or `child# > 1`, non-deterministic delivery would occur because the DQ cannot distinguish between workers that share the same key string — one port's worker could consume another port's ENDJOB signal.
+
+#### Why the port suffix is needed (and a counter is not)
+
+The port suffix in the job name is not for IBM i job identity (the system handles that via job number) — it is for **keyed data queue routing**. Each worker blocks on `RcvDtaqKey(..., 'EQ', 10, psjobnm, ...)` where `psjobnm` is its 10-character job name from the PSDS. `EndRecv` builds `jobn` the same way the controller set it via `argv(1)` at spawn time and sends one ENDJOB signal per worker.
+
+Without the port suffix:
+- Port 3150 → workers named `B220R`
+- Port 3151 → workers named `B220R`
+- `EndRecv` sends signals keyed `'B220R'` — non-deterministic which port's workers receive them
+
+With the port suffix (`B220R3150`, `B220R3151`), signals are routed exactly to the intended group.
+
+A **counter suffix is not needed**: `EndRecv` sends `totrecv(I)` signals keyed to the port's job name. The DQ delivers one entry per `RcvDtaqKey` call, so N workers each consume exactly one of the N signals — regardless of how many workers share the same name. IBM i job numbers handle individual job identity; the signal count handles individual delivery.
+
+Job name sizing: `'B' + bankno(3) + 'R' + port(4)` = `B220R3150` = 9 characters, fitting within the 10-character IBM i job name limit with 1 character to spare.
+
+#### Bug #1 — `DLTPGM` running before every spawn (Analysis issue #1)
+
+**Problem:** Inside `For cOUNTC = 1 to CHILD#` in `RecvJobs`, a `system(qcmd)` call ran `DLTPGM PGM(LIB/WorkerName)` before each `spawnp`. This deleted the compiled program object every time a worker was spawned. The spawn itself calls the already-loaded activation group, so the delete succeeded silently — but would fail in any environment where the object is locked or the library name is wrong, and would prevent future spawns if the delete left the program in a bad state.
+
+**Fix:** The `DLTPGM` block (3 lines: `ServerLibrary = d_sbslibl`, `Qcmd = 'DLTPGM ...'`, `system(qcmd)`) was removed entirely. `ServerLibrary = d_sbslibl` was retained immediately before the `clear path` block where it is legitimately needed for path construction.
+
+#### Bug #2 — All spawned workers assigned identical job name (Analysis issue #2)
+
+**Problem:** `jobn` was built as `'B' + bankno + 'R' + x'00'` — no port number. With `child# > 1` per port, or with multiple ports active, all workers would receive the same job name (e.g., `B220R`). The keyed DQ signal routing in `EndRecv` would become non-deterministic.
+
+**Fix:** Port number appended to `jobn`:
+
+```rpgle
+// Before:
+jobn = 'B' + bankno + 'R' + x'00';
+
+// After:
+jobn = 'B' + bankno + 'R' + %char(port) + x'00';
+```
+
+This produces names like `B220R3150` (9 chars) — unique per port group, routable by `EndRecv`.
+
+#### Bug #3 — Socket array index `p` hardcoded to `1` (Analysis issue #3)
+
+**Problem:** `p = 1` was set unconditionally at the top of `RecvJobs`. `ser(p)` and `job(p)` therefore always wrote to slot 1. When `RecvJobs` was called for ports 2, 3, etc., each call overwrote `ser(1)`, destroying the socket pair reference from the previous port. Only the last port's socket pair survived into `sendmsg`.
+
+**Fix:** Added `portIdx` parameter to `RecvJobs` (both prototype and PI), passed `I` (the port loop index) from the call site, and replaced the hardcoded assignment:
+
+```rpgle
+// Before:
+p = 1;
+
+// After:
+p = portIdx;
+```
+
+Call site change: `RecvJobs(rcvport(I):Child#)` → `RecvJobs(rcvport(I):Child#:I)`
+
+#### Bug #5 — SSL config always sourced from `abnkports(1)` (Analysis issue #5)
+
+**Problem:** `childParm.SSLSEC` and `childParm.APPID` were both set from `abnkports(1)` regardless of which port was being processed. With multiple ports, the SSL config from port 1 would be applied to all workers.
+
+**Fix:** Replace the hardcoded index with `portIdx`:
+
+```rpgle
+// Before:
+childParm.SSLSEC = abnkports(1).p_ssltls;
+childParm.APPID  = abnkports(1).p_appid;
+
+// After:
+childParm.SSLSEC = abnkports(portIdx).p_ssltls;
+childParm.APPID  = abnkports(portIdx).p_appid;
+```
+
+Note: SSL was never completed (no SSL fields exist in any HBSPARS JSON, no end-to-end path in HBSCHILD1). These stubs remain in place pending approval for removal. The index fix ensures that if SSL is ever properly implemented, it will use the correct port's configuration.
+
+#### Supporting fix — `GetParms` hardcoded to port 1
+
+**Problem:** The port-loading block in `GetParms` unconditionally loaded only the first port:
+
+```rpgle
+AbnkPorts(1).p_portnum = dsBankParms.Bank_Port_List(1).Bank_Port;
+rcvport(1) = ABNKPORTS(1).P_PORTNUM;
+totports = 1;
+```
+
+**Fix:** Replaced with a loop over `num_Bank_Port_List`, also populating the SSL fields now that `dsBankParms.Bank_Port_List` has the matching subfields:
+
+```rpgle
+for ary_p = 1 to dsBankParms.num_Bank_Port_List;
+  AbnkPorts(ary_p).p_portnum = dsBankParms.Bank_Port_List(ary_p).Bank_Port;
+  AbnkPorts(ary_p).p_ssltls  = dsBankParms.Bank_Port_List(ary_p).Bank_SSLTLS;
+  AbnkPorts(ary_p).p_appid   = dsBankParms.Bank_Port_List(ary_p).Bank_APPID;
+  rcvport(ary_p) = AbnkPorts(ary_p).p_portnum;
+endfor;
+totports = dsBankParms.num_Bank_Port_List;
+```
+
+Two SSL subfields were also added to `dsBankParms.Bank_Port_List` so `data-into`/`ParseJson` can populate them when the JSON is extended:
+
+```rpgle
+dcl-ds Bank_Port_List dim(10);
+  Bank_Port    int(10) inz(0);
+  Bank_SSLTLS  char(1)  inz('');    // added
+  Bank_APPID   char(50) inz('');    // added
+end-ds;
+```
+
+#### Supporting fix — `EndRecv` signaling only port-1 workers
+
+**Problem:** `EndRecv` built `jobn` as `'B' + bankno + 'R'` (no port) and looped `For I by 1 to totrecv(1)` — signaling only the count for port 1, with a key that would match any worker regardless of port.
+
+**Fix:** Outer loop over all ports, `jobn` rebuilt per port, inner loop over that port's worker count:
+
+```rpgle
+// Before:
+jobn = 'B' + bankno + 'R';
+For I by 1 to totrecv(1);
+  SndDtaqkey(w_dtaqnm:W_DTAQLIB:w_len:wCtrlReq:w_keylen:jobn);
+Endfor;
+
+// After:
+For I by 1 to totports;
+  jobn = 'B' + bankno + 'R' + %char(rcvport(I));
+  For cOUNTC = 1 to totrecv(I);
+    SndDtaqkey(w_dtaqnm:W_DTAQLIB:w_len:wCtrlReq:w_keylen:jobn);
+  Endfor;
+Endfor;
+```
+
+`EndController`'s guard also updated from `iF TotRecv(1) > 0` to `iF totports > 0` — `EndRecv` handles empty-port cases internally via the inner loop.
+
+#### Summary of changes applied
+
+| Location | Change |
+|---|---|
+| `dsBankParms.Bank_Port_List` DS | Added `Bank_SSLTLS char(1)` and `Bank_APPID char(50)` subfields |
+| `GetParms` port assignment block | Replaced hardcoded `AbnkPorts(1)`/`rcvport(1)`/`totports=1` with `for ary_p` loop |
+| `RecvJobs` prototype | Added `PortIdx packed(3)` parameter |
+| `RecvJobs` PI | Added `portIdx packed(3:0)` parameter |
+| Main loop call site | `RecvJobs(rcvport(I):Child#)` → `RecvJobs(rcvport(I):Child#:I)` |
+| `RecvJobs` body — `jobn` | Appended `%char(port)` — e.g. `B220R3150` |
+| `RecvJobs` body — `p` | `p = 1` → `p = portIdx` |
+| `RecvJobs` body — SSL index | `abnkports(1)` → `abnkports(portIdx)` (both assignments) |
+| `RecvJobs` body — DLTPGM | Block removed |
+| `EndRecv` | Outer port loop + per-port `jobn` + inner `totrecv(I)` loop |
+| `EndController` | `TotRecv(1) > 0` guard → `totports > 0` |
+
+### 9.3. Multi-Port Benefit Proposal — Port-Based Service Routing
+
+With multi-port now structurally supported, a natural next step is to use the port of origin to **restrict which services are reachable on which port**. This enables scenarios such as:
+
+- Port 3150 — internal services only (corporate network, no authentication required)
+- Port 3151 — external/partner services only (DMZ-facing, stricter validation)
+- Port 3152 — a new service group activated for a specific integration without touching existing port configuration
+
+All of this would be configuration-driven — no code changes per deployment, just updates to a config table.
+
+#### The routing problem
+
+By the time `HBSCONTRL1` accepts a connection on a given listen socket, it only knows the **port** — not the **service name**. The service name is inside the HTTP request body, which `HBSCHILD1` parses. The controller cannot filter by service; it can only tag the connection with its port of origin. The routing decision has to flow downstream.
+
+#### Proposed design: tag → store → filter
+
+**Step 1 — Controller tags the connection with the port (`HBSCONTRL1`)**
+
+Add `portnum` to the `childParm` DS so the spawned worker receives it:
+
+```rpgle
+// childParm DS — add one field:
+dcl-ds childParm qualified;
+  id      char(10);
+  SSLSEC  char(1);
+  APPID   char(50);
+  portnum packed(5);     // new — port the connection arrived on
+  null    char(1) inz(x'00');
+end-ds;
+
+// In RecvJobs — populate before spawn:
+childParm.portnum = port;
+```
+
+**Step 2 — HBSCHILD1 stores the port in the transaction (`HBSTRANS`)**
+
+Add a `HTPORT DECIMAL(5,0) NOT NULL WITH DEFAULT 0` column to `HBSTRANS`. `WriteRecv` reads `childParm.portnum` from the passed parm DS and includes it in the INSERT. No logic change — just one additional column.
+
+**Step 3 — HBSHANDLR validates service vs. port (`HBSVERSN` config)**
+
+Add a `SVCPORT DECIMAL(5,0) NOT NULL WITH DEFAULT 0` column to `HBSVERSN` (and `HBSVERSNV1`). Convention: `0` = accept on any port (default, preserves all existing behavior).
+
+When `GetWorkData` loads the service record, the existing `dsVersion` DS (already returned to `HBSHANDLR`) would carry `SVCPORT`. A single check in `HBSHANDLR` before dispatching to the host program:
+
+```rpgle
+if dsVersion.SvcPort > 0
+   and dsVersion.SvcPort <> r_htport;   // r_htport from HBSTRANS
+  // return error response — service not available on this port
+  return;
+endif;
+```
+
+Because the service record is already loaded by `HBSWORK.GetWorkData` and `HTPORT` is already in `HBSTRANS` (read by `HBSWORK` as part of the join), no additional queries are needed.
+
+#### Why not filter earlier in HBSCHILD1?
+
+HBSCHILD1 does parse the service name from the URL and could theoretically check `HBSVERSN`. However, that lookup is already done by `HBSWORK.GetWorkData` inside HBSHANDLR. Duplicating it in HBSCHILD1 would add coupling between two programs that are intentionally decoupled. HBSHANDLR is the right place because the config record is already in hand there — the port check is a single `if` against data already loaded.
+
+#### Config table options
+
+| Approach | Pros | Cons |
+|---|---|---|
+| `SVCPORT` column on `HBSVERSN` | Simple — one column, already loaded by `GetWorkData`, no extra join | One allowed port per service only |
+| New `HBSSVCPORT` cross-ref table (`SVCNAME`, `PORT`) | Multiple allowed ports per service | Extra join in `GetWorkData`; more DDL |
+
+For the typical use case — each service is pinned to one port — the single column is sufficient. The cross-ref table is worth implementing only if services need to be reachable on multiple distinct ports simultaneously.
+
+#### What this enables
+
+```
+Port 3150 → HBSCHILD1 stores HTPORT=3150
+            HBSHANDLR checks SVCPORT → only services with SVCPORT=3150 (or 0) execute
+
+Port 3151 → HBSCHILD1 stores HTPORT=3151
+            HBSHANDLR checks SVCPORT → only services with SVCPORT=3151 (or 0) execute
+
+SVCPORT=0  → service accepts connections on any port (default, no behavior change)
+```
+
+The end result is port-based service partitioning that is entirely config-driven: set `HBSVERSN.SVCPORT` for a service and it is immediately restricted to that port on next request, with no code change or subsystem restart required.
+
+#### Client awareness implications
+
+Port-based service routing has a direct impact on calling systems, and the intended use case should determine which model is adopted before implementation.
+
+**Model A — Client-directed routing:** The calling system explicitly targets a specific port per service. The client must know (and be configured with) the correct port for each service name it calls. This works well when the caller list is small and controlled — each integration maps its service calls to the appropriate port in its own configuration:
+
+```
+GETACCTKN → host:3150
+JWTGEN    → host:3151
+```
+
+Any misconfiguration on the client side results in an error at the HBSHANDLR port check. This is transparent to debug but requires coordination with every calling system when port assignments change.
+
+**Model B — Operational isolation boundary (recommended for BSL):** A single external-facing port (e.g., 3150) handles all client traffic, as today. Additional ports are opened for **different caller classes** — not different service names. For example:
+
+- Port 3150 — standard client requests (all existing integrations, unchanged)
+- Port 3151 — batch or administrative traffic from the same server (background jobs, scheduler-submitted calls)
+- Port 3152 — a new integration group activated without touching the existing port configuration
+
+In this model, external clients never need to know about port 3151 or 3152 — those are internal operational boundaries. The service restriction becomes: *"only these service names are valid for connections arriving from this network path"* rather than a routing hint that clients must navigate. No client reconfiguration is required when adding a new port.
+
+**Recommendation:** Design the feature for Model B. Use port separation as a **caller-class isolation mechanism** rather than a per-service routing table. The `SVCPORT=0` default ensures zero impact on existing behavior, and new ports can be introduced incrementally without coordinating changes with calling systems.
+
+#### Implementation scope (when approved)
+
+| Object | Change |
+|---|---|
+| `HBSTRANS` DDL | Add `HTPORT DECIMAL(5,0) NOT NULL WITH DEFAULT 0` |
+| `HBSVERSN` DDL | Add `SVCPORT DECIMAL(5,0) NOT NULL WITH DEFAULT 0` |
+| `HBSVERSNV1` view | Include `SVCPORT` in select |
+| `childParm` DS (`HBSCONTRL1`) | Add `portnum packed(5)` field |
+| `RecvJobs` (`HBSCONTRL1`) | Set `childParm.portnum = port` before spawn |
+| `HBSCHILD1.WriteRecv` | Read `entry.portnum` from parm; include `HTPORT` in INSERT |
+| `dsVersion` DS (`HBSWORK`) | Add `SvcPort packed(5)` subfield matching `HBSVERSNV1` |
+| `HBSHANDLR` dispatch path | Add port check before calling host program |
+
+### 9.4. Free-Format Conversion (P-spec → dcl-proc/end-proc)
+
+**Background:** `HBSCONTRL1.SQLRPGLE` was written in mixed fixed/free format — control options and some declarations were already in free-format, but all procedure definitions still used the fixed-format `P … B` / `P … E` (P-spec) boundaries and `D … PI` / `D … DS` / `D … S` specs for their parameters and local variables. This pass converted all procedure definitions to fully free-format `dcl-proc`/`end-proc`.
+
+**Scope:** All 13 internal procedure definitions were converted. The fixed-format global `D`-spec declarations and forward `D … pr` prototype blocks were left in place — they compile correctly in mixed-format mode and will be addressed in a subsequent pass.
+
+#### Procedures converted
+
+| Procedure | Notes |
+|---|---|
+| `RecvJobs` | `dcl-pi` with `port packed(5)`, `child# packed(3)`, `portIdx packed(3)` |
+| `CrtListen` | `dcl-pi *n int(10) end-pi;` (no parameters) |
+| `CrtListenP` | `dcl-pi` with `port packed(5)` |
+| `errcheck` | `dcl-pi` with `result int(10)` |
+| `Scheduler` | `dcl-pi *n int(10) end-pi;` (no parameters) |
+| `cleanup` | `dcl-pi` with `info pointer` |
+| `SbmHandler` | `dcl-pi` with `worker# packed(3)` |
+| `SbmPush` | `dcl-pi` with `worker# packed(3)` |
+| `CheckQue` | `dcl-pi` with `p_dtaqnm char(10) const`; local variables converted to `dcl-s`/`dcl-ds`; `w_ErrDS` subfields use `pos()` |
+| `EndPush` | `dcl-pi *n int(10) end-pi;`; local `dcl-s` declarations retained |
+| `EndHandler` | `dcl-pi *n int(10) end-pi;`; local `dcl-s` declarations retained |
+| `EndRecv` | `dcl-pi *n int(10) end-pi;`; local `dcl-s` declarations retained |
+| `EndController` | `dcl-pi *n int(10) end-pi;` |
+| `CheckCldr`, `GetParms`, `ParseJSON`, `WrtDtaq` | Already `dcl-proc`/`end-proc` before this session |
+
+#### `eval` keyword removed
+
+The obsolete `eval` keyword was removed from two procedures where it had survived from older code:
+
+- `SbmHandler` — two instances of `eval` on assignment statements
+- `SbmPush` — one instance
+- `RecvJobs` — one remaining instance (`eval countc3 = %char(pcount)`) was identified but left in place; it is harmless and can be removed in a subsequent pass
+
+#### `CEERTX` prototype fixed for free-format
+
+The `CEERTX` condition handler prototype was originally written in mixed fixed/free format using bare fixed-format type specs inside a `dcl-pr` block. This caused a compile error when the rest of the file was converted. The prototype was rewritten as proper free-format:
+
+**Before:**
+```rpgle
+dcl-pr CEERTX extproc('CEERTX');
+  exitProc  *   procptr const;
+  userToken 12   options(*omit);
+  fc        12   options(*omit);
+end-pr;
+```
+
+**After:**
+```rpgle
+dcl-pr CEERTX extproc('CEERTX');
+  exitProc  pointer(*proc) const;
+  userToken char(12) options(*omit);
+  fc        char(12) options(*omit);
+end-pr;
+```
+
+#### `PortIdx` forward prototype spacing fixed
+
+The fixed-format forward prototype for `RecvJobs` had an extra space before the `3  0` length/decimal specification for the `PortIdx` parameter, placing it one column to the right of the expected position. This caused a compile error. One space was removed to restore correct column alignment.
+
+#### `LastSchedRun` D-spec column alignment fixed
+
+The `LastSchedRun` standalone field declaration had a column alignment issue — the type designator `z` was shifted one column to the right of its expected position, causing a compile error. This was corrected manually and the file compiled clean.
+
+#### Remaining fixed-format work (not yet converted)
+
+| Item | Status |
+|---|---|
+| Forward `D … pr` prototype blocks (~lines 47–180) | Not converted — compiles fine in mixed-format; lower priority |
+| Global `D`-spec standalone fields and data structures | Not converted — compiles fine in mixed-format |
+| `eval` in `RecvJobs` body | Not removed — harmless |
+
+---
+
+### 9.5. Proposed: Drain Full Backlog on Each Accept Poll (High-Volume Connection Handling)
+
+**Status:** Not yet implemented — proposed change for next pass.
+
+**Background:** The main loop currently calls `accept()` exactly once per port per iteration, then sleeps 100 ms (`usleep(0100000)`). With a single bank and low connection volume this is adequate. However, at higher volumes — for example 50 client servers connecting simultaneously — this means the kernel's listen backlog drains at only one connection per 100 ms per port, serializing acceptance of a burst that the kernel already has fully queued. At 100 ms/connection a burst of 50 connections takes ~5 seconds to drain; at 10 ms it would still take ~500 ms.
+
+**Root cause:** The loop structure accepts at most one connection before sleeping:
+
+```rpgle
+For I by 1 to totports;
+  if rcvport(I) <> 99999;
+    sockAccept = accept(sockList(I): %addr(sockaddrin): LenSckAdIn);
+    ErrCheck(sockaccept);
+    If sockaccept > 0;
+      RecvJobs(rcvport(I): Child#: I);
+      result = close(sockaccept);
+    endif;
+  endif;
+Endfor;
+usleep(0100000);
+```
+
+**Proposed change:** Because all listen sockets are already set `O_NONBLOCK` by `CrtListen` (via `fcntl(socklist(I): F_SETFL: O_NONBLOCK)`), `accept()` returns immediately with -1 when the backlog is empty. This makes it safe to drain all pending connections in a tight inner loop with no risk of blocking:
+
+```rpgle
+For I by 1 to totports;
+  if rcvport(I) <> 99999;
+    // Drain all pending connections on this port before sleeping
+    dow;
+      sockAccept = accept(sockList(I): %addr(sockaddrin): LenSckAdIn);
+      if sockAccept < 0;      // EWOULDBLOCK — backlog empty, stop draining
+        leave;
+      endif;
+      RecvJobs(rcvport(I): Child#: I);
+      result = close(sockaccept);
+    enddo;
+  endif;
+Endfor;
+usleep(0100000);
+```
+
+**Effect:**
+- A burst of N connections on a port is fully drained in a single pass through the outer `For` loop rather than over N loop iterations × 100 ms each.
+- When the backlog is empty (the normal idle case), the first `accept()` returns -1 immediately, the `dow` exits, and the loop proceeds exactly as before — no performance regression.
+- The `usleep` value becomes purely a CPU throttle and DQ/scheduler poll rate again, decoupled from connection accept latency.
+
+**Note on `RecvJobs` internal `usleep`:** The `usleep(0100000)` inside `RecvJobs` (before the `sendmsg` loop) serves a different purpose — it gives the freshly spawned `HBSCHILD1` jobs time to be scheduled before the parent sends the socket descriptor via `sendmsg`. That sleep should not be removed as part of this change.
+
+**Risk:** Low. The sockets are already `O_NONBLOCK`; the `accept()` return value of -1 on an empty backlog is the documented POSIX behavior. The only new code path is the `dow`/`leave` wrapper; the inner logic is identical to today's.
+
 
