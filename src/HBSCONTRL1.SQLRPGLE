@@ -764,7 +764,8 @@ M03       endif;
          envp(*) = *Null;
          inherit = *Allx'00';
          // jobn = 'B540'  + 'R' + x'00';
-         jobn = 'B' + bankno + 'R' + %char(port) + x'00';
+         //jobn = 'B' + bankno + 'R' + %char(port) + x'00';
+         jobn = 'B' + bankno + 'R' + x'00'; 
          // Set Child Parms
          Clear childParm;
          p = portIdx;
@@ -835,9 +836,10 @@ M03       endif;
            //    %addr(envp));
            if pid2   < 0;
              hbstools_CommLog(600008:'Error in spawn');
+26002        hbstools_CommLog(600008:'Spawn Error Number' + %char(errno));
+           Else;
+             totrecv(I)  +=1;
            Endif;
-
-           totrecv(I)  +=1;
          endfor;
 
          result = close(workersdi);

@@ -815,4 +815,373 @@ usleep(0100000);
 
 **Risk:** Low. The sockets are already `O_NONBLOCK`; the `accept()` return value of -1 on an empty backlog is the documented POSIX behavior. The only new code path is the `dow`/`leave` wrapper; the inner logic is identical to today's.
 
+> **⚠️ HOLD — Memory pressure interaction:** An investigation into recurring `spawnp()` failures (commlog 600008, occurring every 2-3 weeks in production) revealed the server pool is running at approximately 32 page faults/sec at baseline. The drain loop would change burst acceptance from ~1 connection per 100 ms to all pending connections in a single pass, potentially causing all 50+ spawns to fire simultaneously during a connection burst. Under memory pressure, this could make the spawn failure condition significantly worse rather than better.
+>
+> **Key finding (April 2026):** The production machine experiencing spawn failures runs the BSL subsystem in a **shared pool** alongside other processes. The dev machine — which has never experienced spawn failures — runs in a **dedicated pool**. This is strong evidence that pool memory/activity-level contention is the root cause of the failures, making the memory pressure concern above highly credible. The long-term fix is likely to move BSL to its own dedicated pool (or increase the shared pool size/activity level), not to change the accept/spawn loop structure.
+>
+> **Further evidence — 660001 log analysis (April 2026):** Comparing `HBSCHILD1` end-of-job commlog entries (code 660001) between the two systems reveals a structural difference, not just a traffic volume difference:
+>
+> *Healthy system (dedicated pool):*
+> - Child jobs live several minutes, handling 18–130 requests each before ending
+> - Connection reuse is working as designed — the `HBSCHILD1` loop serves many requests per connection
+> - A small number of long-lived workers serve the full traffic volume
+>
+> *Problematic system (shared pool):*
+> - Almost every child job handles **exactly 1 request** then ends
+> - Job lifetimes are almost exactly **65 seconds** with striking consistency (e.g., 07:15:47→07:16:52, 07:17:17→07:18:22, 07:20:45→07:21:50, 07:25:46→07:26:51)
+> - This 65-second boundary is a **client-side connection timeout** — the client sends one request, waits 65 seconds for a response that doesn't arrive in time, disconnects, then immediately reconnects
+>
+> *The compounding cycle this creates:*
+> 1. Shared pool memory pressure → handler is slow → response takes longer than 65 seconds
+> 2. Client times out → disconnects → immediately reconnects
+> 3. Controller spawns a new `HBSCHILD1` for the reconnect → more concurrent jobs
+> 4. More concurrent jobs → more memory pressure → responses even slower
+> 5. More timeouts → more reconnects → more spawns → the flurry of 600008 spawn failures
+>
+> The actual request volume on both systems may be identical. The problematic system is spawning far more jobs to serve the same traffic because connections are not being reused. That amplified spawn rate, concentrated during busy periods, is what drives the periodic spawn failure flurries. **Fixing pool isolation breaks this cycle at its root** — fast responses mean clients never hit the 65-second timeout, connections stay open and reused, and the spawn rate returns to normal.
+>
+> **Decision gate:** Do not implement this change until the POSIX errno from the spawn failure is confirmed from the commlog (errno is now being logged as of change 26002). If the errno is `12` (ENOMEM — memory pressure), the drain loop must **not** be implemented without first resolving the pool isolation issue. If the errno is `11` (EAGAIN — job limit) or `1` (EPERM — authority), the memory pressure concern does not apply and the drain loop can be reconsidered independently.
+
+#### Path forward: drain loop + dedicated pool + software ceiling guard
+
+Once BSL is moved to a dedicated pool, the drain loop becomes viable — but it should be paired with a **software ceiling guard** rather than relying on `MAXACTJOBS` or any OS-level job limit as a throttle. Here is why, and how each option behaves:
+
+**Option A — Lower `MAXACTJOBS` to throttle bursts:** Does **not** throttle gracefully. By the time `spawnp()` fails due to a job limit, `accept()` has already pulled the connection out of the kernel backlog. The worker is never created, the socket gets closed with no response, and the client sees silence or an RST. Connections are dropped, not queued.
+
+**Option B — Leave the kernel backlog as the natural queue (recommended):** The listen socket backlog (currently 512) holds connections harmlessly at the TCP layer. The client's stack waits — nothing is dropped and nothing times out quickly. Connections only fail if they sit in the backlog long enough to hit the client's own connect timeout (typically minutes). The correct approach is to leave connections in the backlog when the system is under load, and `accept()` them only when capacity is available.
+
+**Software ceiling guard — the right throttle mechanism:** Before calling `accept()` inside the drain loop, check whether `totrecv(I)` is at or near a configured maximum active worker count. If at the ceiling, skip `accept()` for this iteration — the connection stays safely in the kernel backlog. When a worker finishes and sends the `40001` command that decrements `totrecv`, the next loop iteration resumes acceptance. Nothing is ever dropped; clients simply wait.
+
+```rpgle
+dcl-c MAX_WORKERS_PER_PORT const(40);   // tune to pool size / ACTLVL
+
+For I by 1 to totports;
+  if rcvport(I) <> 99999;
+    dow totrecv(I) < MAX_WORKERS_PER_PORT;
+      sockAccept = accept(sockList(I): %addr(sockaddrin): LenSckAdIn);
+      if sockAccept < 0;      // EWOULDBLOCK — backlog empty, stop draining
+        leave;
+      endif;
+      RecvJobs(rcvport(I): Child#: I);
+      result = close(sockaccept);
+    enddo;
+  endif;
+Endfor;
+usleep(0100000);
+```
+
+**`ACTLVL` sizing:** The pool's activity level must be set high enough to support the maximum concurrent worker jobs across all ports plus the controller, handler, and push jobs. Undersizing `ACTLVL` causes page faults and ineligible-thread waits even when memory is sufficient; it is a separate tuning parameter from pool memory size. Both must be sized correctly for the drain loop + ceiling guard to work as intended.
+
+---
+
+### 9.7. Investigation: Connection Reuse — OCI Load Balancer 65-Second Idle Timeout
+
+**Status:** Root cause confirmed — no BSL code change required. Fix is an OCI infrastructure configuration change.
+
+**Background:** Analysis of `HBSCHILD1` end-of-job commlog entries (660001) revealed a stark difference between a healthy system (dedicated pool) and a problematic system (shared pool):
+
+- Healthy system: child jobs handle 18–130 requests per connection, living several minutes
+- Problematic system: nearly every child job handles exactly **1 request** and ends after exactly **65 seconds**
+
+Initially the 65-second pattern was attributed to slow responses caused by shared pool memory pressure. However, comparing logs from a quiet period on the problematic system showed the same 1-request/65-second pattern at low load — ruling out memory pressure as the cause of the connection churn.
+
+**Analysis of request headers:**
+
+Comparing HTTP request headers between the two systems revealed two smoking guns:
+
+1. **Host header format:** The problematic system shows `Host: 10-90-85-131_3121_8896` — a raw IP address with dashes plus port and FI number. This naming convention is used internally by **Oracle Cloud Infrastructure (OCI)** load balancers and OKE orchestration layers to identify backend targets.
+
+2. **The 65-second value:** OCI Load Balancer documentation explicitly states that the keep-alive idle timeout for backend connections is hardcoded to **65 seconds**. After 65 seconds of inactivity on a backend connection, OCI closes it from the load balancer side.
+
+**Confirmed root cause:** The problematic system's traffic passes through an **OCI Load Balancer**. OCI closes the backend TCP connection to BSL after 65 seconds of idle time by design. `HBSCHILD1` correctly detects the TCP close (`recv()` returns 0), exits `RecvDta`, and ends the job. OCI then opens a fresh connection for the next request, triggering a new `spawnp()` in the controller.
+
+This is not a BSL bug. Adding `Connection: keep-alive` to the BSL response headers would have no effect — OCI's load balancer closes the backend connection regardless of HTTP headers.
+
+The healthy system connects via `upstream12_9498` — a logical hostname consistent with a non-OCI proxy or a differently configured OCI backend socket pool that maintains persistent connections to BSL.
+
+**Impact on spawn rate:** Because OCI reconnects for every request (or after every 65s idle), the spawn rate on the problematic system is permanently elevated compared to a system with persistent connections. Under load this amplifies pool pressure and drives the 600008 spawn failure flurries.
+
+**Fix options:**
+
+1. **OCI backend connection reuse (preferred):** OCI Load Balancer backend sets support persistent connection pooling. Configuring the OCI backend set to maintain a pool of persistent connections to BSL would eliminate the per-request reconnect entirely. This is an OCI infrastructure configuration change — no BSL code change required.
+
+2. **Pool isolation (still required):** Even with OCI connection pooling configured, moving BSL to a dedicated pool eliminates the shared pool contention. Both fixes address different layers of the problem.
+
+3. **Software ceiling guard (future):** Once pool isolation is in place and the spawn rate is understood, the ceiling guard in Section 9.5 provides an additional safety layer.
+
+**Corroborating evidence — HBSTRANS request log vs. 660001 commlog correlation (April 22, 2026):**
+
+A small sample was cross-referenced between incoming request timestamps (from HBSTRANS) and `HBSCHILD1` end-of-job commlog entries (660001) to confirm the OCI idle timeout mechanism directly. The sample covered the window 16:37:05–16:38:07 and contained 8 `GetAccounts` requests arriving in pairs roughly 20 seconds apart.
+
+Four child jobs ended during this window:
+
+| Job started | Job ended | Total Recv | Requests handled |
+|-------------|-----------|------------|-----------------|
+| 16:37:05 | 16:38:30 | 2 | `0D1AE018` (16:37:05) + `1C797018` (16:37:06) — 85s lifetime |
+| 16:37:06 | 16:38:53 | 2 | Second 16:37:06 request + overlap — 107s lifetime |
+| 16:37:26 | 16:38:31 | 1 | One of the `121B` pair — 65s idle timeout fired |
+| 16:37:51 | 16:39:12 | 3 | `CAF7B018` (16:37:51) + `A573E018` (16:37:49) + `121D` pair member (16:38:07) — 81s lifetime |
+
+The correlation confirms the mechanism: when requests arrive within 65 seconds of each other on the same OCI backend connection, OCI reuses the connection and TotRecv climbs above 1. When there is a gap longer than 65 seconds, OCI closes the backend connection and a new `HBSCHILD1` job is spawned for the next request. The 1-request/65-second jobs are not failures — they are OCI behaving exactly as documented.
+
+This is the first time HBSTRANS request timestamps and 660001 commlog entries have been correlated directly. The sample size is sufficient to confirm the mechanism; a larger dataset would add statistical weight but would not change the conclusion.
+
+**Note:** A `Connection: keep-alive` header was briefly added to `BldHeader` during this investigation and then reverted once the OCI root cause was confirmed. No code change to `HBSCHILD1` is needed for this issue.
+
+---
+
+### 9.8. Proposed: BSL Subsystem Statistics Collection (HBSSTATS)
+
+**Status:** Not yet implemented — proposed for next pass after OCI and pool isolation work is complete.
+
+**Background:** Current instrumentation relies on `HBSCOMLOG` text entries which cannot be easily queried, trended, or visualized. A dedicated statistics table would allow SQL-based analysis of active worker counts, spawn failure rates, handler queue depth, and connection reuse health — both during investigations and as ongoing operational monitoring.
+
+#### Table definition
+
+```sql
+CREATE TABLE HBSSTATS (
+  STAT_TIME    TIMESTAMP     NOT NULL,
+  STAT_TYPE    CHAR(10)      NOT NULL,
+  PORT         INT           NOT NULL,
+  ACTIVE_WRKS  INT           NOT NULL,
+  SPAWN_FAIL   INT           NOT NULL,
+  TOTAL_SPAWN  INT           NOT NULL,
+  HDLR_QLEN    INT           NOT NULL,
+  CTRL_UPTIME  INT           NOT NULL
+);
+
+CREATE INDEX HBSSTATS1 ON HBSSTATS (STAT_TIME);
+CREATE INDEX HBSSTATS2 ON HBSSTATS (STAT_TYPE, PORT, STAT_TIME);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `STAT_TIME` | TIMESTAMP | When the snapshot was taken |
+| `STAT_TYPE` | CHAR(10) | `'CTRLSNAP'` — controller periodic snapshot; `'SPAWNFAIL'` — logged on each spawn failure |
+| `PORT` | INT | Port number (from `rcvport(I)`); 0 for controller-level entries |
+| `ACTIVE_WRKS` | INT | `totrecv(I)` — active child jobs on this port at snap time |
+| `SPAWN_FAIL` | INT | Cumulative spawn failures since controller started |
+| `TOTAL_SPAWN` | INT | Cumulative successful spawns since controller started |
+| `HDLR_QLEN` | INT | Handler dataq depth at snap time (entries waiting to be processed) |
+| `CTRL_UPTIME` | INT | Seconds since controller job started |
+
+All numeric columns are `INT` (4-byte binary integer) — optimal for `MAX()`, `AVG()`, `GROUP BY` aggregation queries without packed decimal conversion overhead.
+
+#### Control DQ commands: STATSON / STATSOFF
+
+Stats collection is controlled via the existing control dataq mechanism in `HandleCtrlCmd`. Two new commands toggle collection on and off without restarting the controller:
+
+- `STATSON` — enables periodic snapshot inserts to `HBSSTATS` (interval: every 60 seconds per port)
+- `STATSOFF` — disables inserts; controller continues running normally with no stats overhead
+
+A module-level `dcl-s w_statsOn ind inz(*off)` flag gates all insert activity. Stats are off by default — enable only when investigating a problem or baselining after a configuration change.
+
+#### Useful queries
+
+```sql
+-- Peak and average active workers by port, by day
+SELECT PORT, DATE(STAT_TIME) AS SNAP_DATE,
+       MAX(ACTIVE_WRKS) AS PEAK_WORKERS,
+       INT(AVG(ACTIVE_WRKS)) AS AVG_WORKERS
+FROM HBSSTATS
+WHERE STAT_TYPE = 'CTRLSNAP'
+GROUP BY PORT, DATE(STAT_TIME)
+ORDER BY SNAP_DATE DESC, PORT;
+
+-- Spawn failure rate over time
+SELECT DATE(STAT_TIME) AS SNAP_DATE, PORT,
+       MAX(SPAWN_FAIL) - MIN(SPAWN_FAIL) AS FAILURES_THIS_DAY
+FROM HBSSTATS
+WHERE STAT_TYPE = 'CTRLSNAP'
+GROUP BY DATE(STAT_TIME), PORT
+ORDER BY SNAP_DATE DESC;
+
+-- Handler queue depth trend — are handlers keeping up?
+SELECT STAT_TIME, PORT, HDLR_QLEN
+FROM HBSSTATS
+WHERE STAT_TYPE = 'CTRLSNAP'
+  AND HDLR_QLEN > 0
+ORDER BY STAT_TIME DESC;
+```
+
+#### Baseline opportunity
+
+Enable `STATSON` immediately after the OCI backend timeout is raised to capture the before/after comparison for active worker count and spawn failure rate. This will provide concrete evidence of the improvement for stakeholders.
+
+#### Implementation notes
+
+**New module-level fields in `HBSCONTRL1`** (always accumulate regardless of stats on/off, so no history is lost if stats are enabled mid-run):
+
+```rpgle
+dcl-s w_statsOn     ind   inz(*off);   // toggled by STATSON/STATSOFF
+dcl-s w_spawnFail   int(10) inz(0);    // cumulative spawn failures since start
+dcl-s w_totalSpawn  int(10) inz(0);    // cumulative successful spawns since start
+dcl-s w_uptimeSecs  int(10) inz(0);    // seconds since controller started
+dcl-s LastStatSnap  timestamp inz(*loval);
+dcl-s w_ctrlStart   timestamp;         // set in *inzsr
+```
+
+**In `HandleCtrlCmd`** — add alongside existing `ENDJOB` handling:
+
+```rpgle
+when w_dta30 = 'STATSON';
+  w_statsOn = *on;
+  hbstools_CommLog(600000:'BSL Stats collection enabled');
+
+when w_dta30 = 'STATSOFF';
+  w_statsOn = *off;
+  hbstools_CommLog(600000:'BSL Stats collection disabled');
+```
+
+**Periodic snapshot** — add after `HandleCtrlCmd()` call in main loop, throttled to 60-second intervals. The `w_statsOn` flag gates the insert; counter updates happen unconditionally:
+
+```rpgle
+w_uptimeSecs = %diff(%timestamp():w_ctrlStart:*seconds);
+if w_statsOn and %diff(%timestamp():LastStatSnap:*seconds) >= 60;
+  For I by 1 to totports;
+    exec sql
+      insert into HBSSTATS
+        (STAT_TIME, STAT_TYPE, PORT, ACTIVE_WRKS,
+         SPAWN_FAIL, TOTAL_SPAWN, HDLR_QLEN, CTRL_UPTIME)
+      values
+        (%timestamp(), 'CTRLSNAP', :rcvport(I), :totrecv(I),
+         :w_spawnFail, :w_totalSpawn, 0, :w_uptimeSecs);
+  Endfor;
+  LastStatSnap = %timestamp();
+endif;
+```
+
+**On spawn failure** — increment counters unconditionally; insert only when stats on:
+
+```rpgle
+if pid2 < 0;
+  hbstools_CommLog(600008:'Error in spawn');
+  hbstools_CommLog(600008:'Spawn Error Number' + %char(errno));
+  w_spawnFail += 1;
+  if w_statsOn;
+    exec sql
+      insert into HBSSTATS
+        (STAT_TIME, STAT_TYPE, PORT, ACTIVE_WRKS,
+         SPAWN_FAIL, TOTAL_SPAWN, HDLR_QLEN, CTRL_UPTIME)
+      values
+        (%timestamp(), 'SPAWNFAIL', :rcvport(I), :totrecv(I),
+         :w_spawnFail, :w_totalSpawn, 0, :w_uptimeSecs);
+  endif;
+Else;
+  totrecv(I) += 1;
+  w_totalSpawn += 1;
+Endif;
+```
+
+**Note on `HDLR_QLEN`:** Handler queue depth requires a `QSNDDTAQ`/`QRCVDTAQ` query call to retrieve the current entry count — this is a future enhancement. Set to 0 in the initial implementation.
+
+#### Configuration tuning methodology
+
+`HBSSTATS` is designed to be the tuning instrument for BSL configuration decisions. Currently every configuration value (handler count, pool size, activity level) is set by estimate. After the OCI fix is deployed, enable `STATSON` and collect at least one week of data covering both peak and off-peak periods before adjusting anything. Then use the following decision table:
+
+**Handler count tuning (`d_hand#`):**
+
+| `HDLR_QLEN` pattern | Interpretation | Action |
+|---------------------|---------------|--------|
+| Consistently 0 at all times | Handlers always idle — over-provisioned | Reduce handler count by 25%, recheck after one week |
+| Occasionally spikes then drains quickly | Handlers absorbing bursts correctly | No change needed |
+| Grows and stays elevated | Handlers falling behind sustained load | Increase handler count |
+
+A queue depth of 0 at all times is not the goal — it means handlers are sitting idle consuming pool activity level slots unnecessarily. A small queue (1–3 entries) that drains within seconds is healthy and means handler count is correctly matched to throughput.
+
+**Worker ceiling guard (`MAX_WORKERS_PER_PORT`):**
+
+Query peak `ACTIVE_WRKS` over a representative week:
+
+```sql
+SELECT PORT, MAX(ACTIVE_WRKS) AS PEAK, INT(AVG(ACTIVE_WRKS)) AS AVG_WORKERS
+FROM HBSSTATS
+WHERE STAT_TYPE = 'CTRLSNAP'
+GROUP BY PORT;
+```
+
+Set `MAX_WORKERS_PER_PORT` to 1.5× the observed peak — enough headroom for burst spikes without allowing unbounded growth.
+
+**Pool size tuning:**
+
+Once `MAX_WORKERS_PER_PORT` is established, pool memory sizing becomes straightforward:
+
+```
+Required pool memory = MAX_WORKERS_PER_PORT × ports × ~3MB per job
+                     + handler jobs × ~3MB
+                     + push jobs × ~3MB
+                     + controller × ~3MB
+                     + 25% headroom
+```
+
+For example: 40 workers × 2 ports × 3MB + 10 handlers × 3MB + 5 push × 3MB + 1 controller × 3MB + 25% = ~330MB. Round up to 512MB.
+
+**Activity level tuning:**
+
+Set `ACTLVL` to the sum of all maximum concurrent jobs across all roles. Monitor `WRKACTJOB` for ineligible threads — if ineligible count is regularly above zero, raise `ACTLVL`. If page faults per second are high but ineligible count is zero, the issue is pool memory size, not activity level.
+
+**Spawn failure validation:**
+
+After the OCI backend timeout is raised, `SPAWN_FAIL` in `HBSSTATS` should drop to near zero. If failures continue:
+
+```sql
+-- Check if failures cluster at specific times (load pattern)
+SELECT DATE(STAT_TIME), HOUR(STAT_TIME),
+       MAX(SPAWN_FAIL) - MIN(SPAWN_FAIL) AS FAILURES_THIS_HOUR
+FROM HBSSTATS
+WHERE STAT_TYPE = 'CTRLSNAP'
+GROUP BY DATE(STAT_TIME), HOUR(STAT_TIME)
+HAVING MAX(SPAWN_FAIL) - MIN(SPAWN_FAIL) > 0
+ORDER BY 1 DESC, 2;
+```
+
+Persistent failures after the OCI fix indicates pool isolation is still needed regardless.
+
+---
+
+### 9.6. Investigation: `child#`, `P2`, `P3` — Dead Code in SendChild / RecvJobs
+
+**Status:** Pending clarification before any removal — do not change without confirmation.
+
+**Background:** A code review of the `SendChild` subroutine and the inline `sendmsg` loop in `RecvJobs` raised questions about three variables: `child#`, `P2`, and `P3`.
+
+#### `child#` — always 1?
+
+`child#` is a global `packed(3)` field declared as `D child# s 3 0`. It is hardcoded to `1` in two places and never modified elsewhere:
+
+1. In `*inzsr`: `child# = 1;`
+2. At the top of the main loop on every iteration: `child# = 1;`
+
+It is passed as the `Worker#` parameter to `RecvJobs`, which uses it as the upper bound of the spawn loop (`For cOUNTC = 1 to CHILD#`) and the `sendmsg` loop (`For P2 by 1 to CHILD#`). The architecture clearly anticipated `child#` being variable — the `ser(dim(2))`, `job(dim(2))` arrays, and the throttle logic with `P3` only make sense if multiple children could be spawned per accepted connection. However, `child#` has never been set to anything other than 1 in production.
+
+**Clarification needed:** Confirm that `child#` is intentionally always 1 (one spawned worker per accepted connection) and that there is no plan to ever set it higher before removing dependent code.
+
+#### `P2` — loop counter for `sendmsg`
+
+`P2` is the `For` loop counter iterating `1 to CHILD#`. Since `CHILD# = 1` always, this loop runs exactly once. If `child#` is confirmed as always 1, the `For P2` loop in both `SendChild` and `RecvJobs` could be replaced with a single unconditional `sendmsg` call.
+
+#### `P3` — broken throttle counter (dead code)
+
+`P3` was intended as a batch-send throttle: sleep 100ms after every 5 `sendmsg` calls. The pattern is:
+
+```rpgle
+if P3 = 5;
+  usleep(0100000);
+  P3 = 0;
+endif;
+```
+
+**However, `P3` is never incremented anywhere in either loop.** It initializes to 0 and stays 0, so `if P3 = 5` can never be true. The `usleep` inside it is permanently unreachable dead code. This same bug exists in both the `SendChild` subroutine and the `sendmsg` loop in `RecvJobs`.
+
+**Proposed cleanup (pending `child#` clarification):**
+
+| Item | Proposed action |
+|---|---|
+| `P3 = 0;` initialization | Remove from both loops |
+| `if P3 = 5 ... endif` block | Remove from both loops (unreachable dead code) |
+| `D p3 s 4 0` declaration | Remove if no other references found |
+| `For P2 by 1 to CHILD#` loop | Remove loop wrapper, keep single `sendmsg` call — *only if `child#` confirmed always 1* |
+| `P2 = 0;` initialization | Remove if loop is removed |
+| `D p2 s 4 0` declaration | Remove if no other references found |
+
 
