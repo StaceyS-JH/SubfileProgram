@@ -1050,6 +1050,8 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
              return *off;
            endif;
 
+           UpdtStatR('Y');
+
           // Write to receive dataq for handler - use w_guid2 (local GUID) as queue entry
               %subst(w_qdata:1:36) = w_guid2;
               %subst(w_qdata:37:3) = 'HBS';
