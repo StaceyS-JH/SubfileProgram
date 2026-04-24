@@ -1052,7 +1052,8 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
              return *off;
            endif;
 
-           UpdtStatR('Y');
+           // UpdtStatR('Y') removed - HBSWORK queries WHERE HTRCVSTS='N'
+           // so record must stay 'N' until HBSHANDLR's WrtTrans sets it to 'Y'
 
           // Write to receive dataq for handler - use w_guid2 (local GUID) as queue entry
               %subst(w_qdata:1:36) = w_guid2;
