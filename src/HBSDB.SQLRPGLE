@@ -282,8 +282,9 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
            'cast(' + tic + tic + ' as varchar(25)), '    +
 26001      'HTSNAME, '                                    +
 26001      'HTPNAME '                                     +
-         'From hbstrans '                                +
-         'where @W '                                     +
+26001    'From hbstrans '                                +
+26001    'where HTTYPE = ' + tic + 'IN' + tic +         +
+26001    ' and @W '                                      +
          'Order by '                                     +
          '  HTRCVTS desc '                               +
          'For Read Only';
