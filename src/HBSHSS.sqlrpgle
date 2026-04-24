@@ -15,9 +15,6 @@
        //dcl-f hbslogx1 keyed usage(*input) usropn;
        Dcl-F hbshssfm WorkStn IndDS(gInd) sfile(sfla : rrna);
 
-       //Dcl-Pr EntryParm ExtPgm('HBSWP');
-       //End-Pr;
-
        // EntryParm
        Dcl-PI *N;
          pService char(10) const;
@@ -30,14 +27,6 @@
          oValue3 char(50);
 
        END-PI;
-
-       //dcl-pr HBSViewJSON extpgm('HBSJSV');
-       //  pFile char(10) const;
-       //  pField char(10) const;
-       //  pRef1 char(40) const;
-       //  pRef2 char(40) const;
-       //  pString varchar(2000000) const;
-       //end-pr;
 
        // Data Structures -----------------------------------------------------
        Dcl-DS gInd Qualified;
@@ -74,10 +63,7 @@
            InternalSecondaryId varchar(25) inz('');
            UserType int(10) inz(0);
          end-ds;
-       //  // define Standard fields
-       //  /define StandardFields
-       //  /include qcpysrc,hbsstand
-       //  /undefine StandardFields
+
          dcl-ds ActivityTracking;
            ActivityId varchar(36) inz('');
            ParentActivityId varchar(36) inz('');
@@ -113,10 +99,7 @@
            InternalSecondaryId varchar(25) inz('');
            UserType int(10) inz(0);
          end-ds;
-       //  // define Standard fields
-       //  /define StandardFields
-       //  /include qcpysrc,hbsstand
-       //  /undefine StandardFields
+
          dcl-ds ActivityTracking;
            ActivityId varchar(36) inz('');
            ParentActivityId varchar(36) inz('');
@@ -155,10 +138,7 @@
            InternalSecondaryId varchar(25) inz('');
            UserType int(10) inz(0);
          end-ds;
-         // define Standard fields
-       //  /define StandardFields
-       //  /include qcpysrc,hbsstand
-       //  /undefine StandardFields
+
          dcl-ds ActivityTracking;
            ActivityId varchar(36) inz('');
            ParentActivityId varchar(36) inz('');
@@ -198,15 +178,14 @@
        dcl-ds myReqData likeds(HBSHS013_Req) inz;
 
        // Copy Books ----------------------------------------------------------
-       ///Copy qcpysrc,SYSTEMCPY
-       ///Copy qcpysrc,DDMISCUCPY
+
        /include qcpysrc,hbstools
        /include qcpysrc,hbspsds
        /include qcpysrc,jhdateucpy
        /copy qcpysrc,sqlstruct
 
       // Misc. Field Declarations
-       //Dcl-S SndRcv Char(1);
+
 sas1     dcl-s ClobData varchar(2000000);
 sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          Dcl-S Build  Ind Inz(*on);
@@ -242,8 +221,6 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
        dcl-s myRtnOpts char(40);
        dcl-s idx1 int(10);
 
-       //Dcl-S blockSize Int(10) Inz(%Elem($dsHBSRECV));
-       //Dcl-S blockSize Int(10) Inz(%Elem($dsRec));
        Dcl-S Index# Int(10);
        Dcl-S noMoreRows Ind;
        //
@@ -527,11 +504,7 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          returnnum = rrna;
          s#rrna = rrna;
          rrna = 1;
-       //  maxrrna = rrna;
-       //  if PositionTo > 0;
-       //     rrna = PositionTo;
-       //  endif;
-
+       
        Return;
 
        End-Proc;
@@ -555,12 +528,6 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
            rrna = 1;
          endif;
 
-       //  sfltitle = '                    Select Hos' +
-       //             't Service                     ';
-       //  sflheader = 'Service Name                             ' +
-       //              'Program    ' +
-       //              'Version';
-
          write sflaf;
          exfmt sflac;
 
@@ -583,7 +550,7 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          select;
          other;
              Changed = *off;
-       //      if gInd.Sfl_Empty = *off;
+       
                readc sfla;
                test1 = crrna;
                dow not(%eof);
@@ -592,30 +559,8 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
                      oValue1 = %trim(sflvalue1);
                      Exit = *on;
                      return;
-       //              ViewParmData(RecordId);
-
+       
                  endsl;
-                 // Subfile Options
-       //          select;
-                 // View Request
-       //          when option2 = 'RD';
-       //            ViewCLOB('HBSRECV': 'HRRCVDTA': AGuid);
-       //          when option2 = 'RH';
-       //            ViewCLOB('HBSRECV': 'HRRCVHDR': AGuid);
-       //          // View Response
-       //          when option2 = 'SD';
-       //            ViewClob('HBSSEND': 'HSSNDDTA': AGuid);
-       //          when option2 = 'SH';
-       //            ViewClob('HBSSEND': 'HSSNDHDR': AGuid);
-       //          when option2 = 'SR';
-       //            ViewClob('HBSSEND': 'HSRSPNSE': AGuid);
-       //          // View GUID Log
-       //          when %trim(option2) = 'L';
-       //            ViewClob('HBSGUIDLOG': 'HGJSONLOG': AGuid);
-       //          when %trim(option2) = 'V';
-       //            ViewJSON(AGuid);
-       //          endsl;
-
                  clear option;
                  update sfla;
                    readc sfla;
@@ -635,56 +580,3 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
        enddo;
 
        end-proc;
-
-      //---------------------------------------------------------
-      // ParseJSON - Parse JSON string
-      //---------------------------------------------------------
-       //dcl-proc ParseJSON;
-       //  dcl-pi *n;
-       //    pJSON varchar(5000);
-       //  END-PI;
-       //
-       //  data-into RcvResp %DATA(pJSON
-       //                  : 'doc=string case=convert countprefix= num_ -
-       //                  allowextra=yes allowmissing=yes')
-       //                         %PARSER('YAJLINTO');
-       //
-       //  return;
-       //
-       //end-proc;
-       //
-       //dcl-proc ViewParmData;
-       //  dcl-pi *n;
-       //    pRecordId char(20);
-       //  end-pi;
-       //
-       ////open hbslogx1;
-       ////chain (pGUID) hbslogx1;
-       ////
-       // ClobSqlData_data = '';
-       // ClobSqlData_len = 0;
-       ////
-       //Exec Sql
-       //  select hssbsparm into :ClobSqlData
-       //    from hbspars
-       //    where hssbsid = :pRecordId;
-       //
-       //ClobData = %trim(ClobSqlData_data);
-       ////Clob_len = %len(%trim(ClobData));
-       //
-       //
-       //HBSViewJSON('HBSPARS'
-       //             :'HSSBSPARM'
-       //             :RecordID
-       //             :'REF2'
-       //             :ClobData );
-       //
-       ////HBSViewJSON('HBSLOGF'
-       ////           :'LOINFO'
-       ////           :LOGUID
-       ////           :'REF2'
-       ////           :LOINFO);
-       //
-       ////close hbslogx1;
-       //
-       //end-proc;
