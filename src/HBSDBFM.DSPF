@@ -192,50 +192,52 @@
      A                                      DSPATR(HI)
      A                                  2 60'Inbound Filter'
      A                                      DSPATR(HI)
-     A                                  6  9'Activity GUID'
-     A                                  7 11'Parent GUID'
-     A                                  8  8'Receive Status'
-     A                                  9 11'Send Status'
-     A                                 10 15'Service'
-     A                                 12 36'Receive Date/Time'
-     A            RDFR          10A  B 14 24
+     A                                  9  8'Receive Status'
+     A                                 10 11'Send Status'
+     A                                 11 15'Service'
+     A                                 13 36'Receive Date/Time'
+     A            RDFR          10A  B 15 24
      A  40                                  ERRMSG('Invalid Date.' 40)
-     A                                 13 36'mm/dd/yyyy'
+     A                                 14 36'mm/dd/yyyy'
      A                                      COLOR(BLU)
-     A            RTTO           8A  B 13 49
+     A            RTTO           8A  B 14 49
      A  46                                  ERRMSG('Invalid Time.' 46)
-     A                                 13 59'hh:mm:ss'
+     A                                 14 59'hh:mm:ss'
      A                                      COLOR(BLU)
      A            FAGUID        36A  B  6 24CHECK(LC)
-     A            FPGUID        36A  B  7 24CHECK(LC)
-     A            FRSTAT         1A  B  8 24
+     A            FRPGUID       36A  B  8 24CHECK(LC)
+     A            FRSTAT         1A  B  9 24
      A  42                                  ERRMSG('Invalid From Status' 42)
-     A            FSSTAT         1A  B  9 24
+     A            FSSTAT         1A  B 10 24
      A  43                                  ERRMSG('Invalid Send Status.' 43)
-     A            FSERVICE      40A  B 10 24CHECK(LC)
+     A            FSERVICE      40A  B 11 24CHECK(LC)
      A  44                                  ERRMSG('Invalid Service Name.' 44)
-     A                                  8 28'F4=List'
-     A                                      COLOR(BLU)
      A                                  9 28'F4=List'
      A                                      COLOR(BLU)
-     A                                 10 67'F4=List'
+     A                                 10 28'F4=List'
+     A                                      COLOR(BLU)
+     A                                 11 67'F4=List'
      A                                      COLOR(BLU)
      A                                 26  2'F4=List'
      A                                      COLOR(BLU)
      A                                 26 13'F12=Cancel'
      A                                      COLOR(BLU)
-     A                                 13 20'To'
-     A                                 14 18'From'
-     A            RDTO          10A  B 13 24
+     A                                 14 20'To'
+     A                                 15 18'From'
+     A            RDTO          10A  B 14 24
      A  45                                  ERRMSG('Invalid Date.' 45)
-     A                                 14 36'mm/dd/yyyy'
+     A                                 15 36'mm/dd/yyyy'
      A                                      COLOR(BLU)
-     A            RTFR           8A  B 14 49
+     A            RTFR           8A  B 15 49
      A  41                                  ERRMSG('Invalid Time.' 41)
-     A                                 14 59'hh:mm:ss'
+     A                                 15 59'hh:mm:ss'
      A                                      COLOR(BLU)
      A                                  4 26'Selection'
      A                                      COLOR(BLU)
+     A                                  6  4'Host Activity GUID'
+     A                                  7  5'Req Activity GUID'
+     A                                  8  7'Req Parent GUID'
+     A            FRAGUID       36A  B  7 24CHECK(LC)
      A          R SFLC                      SFL
      A*%%TS  SD  20220814  192816  STACEYS     REL-V7R4M0  5770-WDS
      A            OPTION1        1A  I  7  4VALUES(' ' '1')
