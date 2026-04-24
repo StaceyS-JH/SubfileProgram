@@ -1,0 +1,610 @@
+     A*%%TS  SD  20260424  105850  STACEYS     REL-V7R5M0  5770-WDS
+     A* CREATE COMMAND
+     A*
+     A*> CRTDSPF FILE(&O/&ON) SRCFILE(&L/&F)
+     A*
+     A*%%EC
+     A                                      DSPSIZ(27 132 *DS4)
+     A                                      REF(*LIBL/JHXPARF)
+     A                                      PRINT
+     A                                      INDARA
+     A                                      CA12(12 'F12=Previous')
+     A**
+     A          R SFLA                      SFL
+     A*%%TS  SD  20240506  165753  STACEYS     REL-V7R5M0  5770-WDS
+     A            OPTION2        2A  I  8  4VALUES('  ' 'RD' 'RH' 'SD' 'SH' 'SR-
+     A                                      ' ' L' 'L ' 'V ' ' V' 'R ' ' R' 'DB-
+     A                                      ')
+     A            AGUID         36A  O  8  8
+     A            SERVICE       40A  O  8 46
+     A            RCVSTAT        1A  O  8 97
+     A            SNDSTAT        1A  O  8101
+     A            RCVTS         26A  O  8105
+     A                                  9 97'Snd TS:'
+     A                                      DSPATR(HI)
+     A            SNDTS         26A  O  9105
+     A            PGUID         36A  O  9  8
+     A                                  9  5'P:'
+     A                                      DSPATR(HI)
+     A            RCVSCS         1A  O  8 93
+     A            ITYPE          1A  O  8 89
+     A            RECIND         1A  O  8  2
+     A                                  9 46'Host Pgm:'
+     A                                      DSPATR(HI)
+     A            HOSTPGM       10   O  9 56
+     A**
+     A          R SFLAC                     SFLCTL(SFLA)
+     A*%%TS  SD  20240506  165433  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      SFLSIZ(1000)
+     A                                      SFLPAG(0008)
+     A                                      CF09(09 'Filter')
+     A                                      CA03(03 'Exit')
+     A                                      CA05(05 'Refresh')
+     A                                      CA11(11 'Swap')
+     A                                      CA01(01 'Functions')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A                                      PUTOVR
+     A                                      SFLCSRRRN(&CRRNA)
+     A N64                                  SFLDSP
+     A N65                                  SFLDSPCTL
+     A  65                                  SFLCLR
+     A N66                                  SFLEND(*MORE)
+     A                                      SFLDROP(CF07)
+     A  30                                  SFLMSG('More than 9999 results retu-
+     A                                      rned.  Try narrowing your search re-
+     A                                      sults.')
+     A            CRRNA          5S 0H
+     A            FLD           10A  H
+     A            RCD           10A  H
+     A            RRNA           4S 0H      SFLRCDNBR(CURSOR)
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  3  3'RD=Recv Data'
+     A                                      COLOR(BLU)
+     A                                  7  3'Opt'
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7  8'AGUID                             -
+     A                                        '
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7 46'Service                           -
+     A                                            '
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  4  3'SD=Send Data'
+     A                                      COLOR(BLU)
+     A                                  4 53'L=View GUID Log'
+     A                                      COLOR(BLU)
+     A                                  4 74'R=Reset'
+     A                                      COLOR(BLU)
+     A                                  7 96'Rcv'
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7100'Snd'
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7105'Rcv Time Stamp            '
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  2 63'Inbound'
+     A                                      DSPATR(HI)
+     A                                  3 17'V=View Detail'
+     A                                      COLOR(BLU)
+     A                                  3 33'RH=Recv Header'
+     A                                      COLOR(BLU)
+     A                                  4 17'SH=Send Header'
+     A                                      COLOR(BLU)
+     A                                  4 33'SR=Send Resp'
+     A                                      COLOR(BLU)
+     A                                  7 92'Scs'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  7 88'Typ'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                  3 52'DB=Debug'
+     A                                      COLOR(BLU)
+     A**
+     A          R SFLAF
+     A*%%TS  SD  20231230  230429  STACEYS     REL-V7R5M0  5770-WDS
+     A                                 26 16'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 26 37'F7=Fold'
+     A                                      COLOR(BLU)
+     A                                 26 46'F9=Filter'
+     A                                      COLOR(BLU)
+     A                                 26110'Results Returned:'
+     A            RETURNNUM      4S 0O 26128
+     A                                 26 25'F5=Refresh'
+     A                                      COLOR(BLU)
+     A                                 26 57'F11=Swap'
+     A                                      COLOR(BLU)
+     A                                 26  2'F1=Functions'
+     A                                      COLOR(BLU)
+     A          R SFLB                      SFL
+     A*%%TS  SD  20220801  190244  STACEYS     REL-V7R4M0  5770-WDS
+     A            TEXT         125A  O  6  4
+     A          R SFLBC                     SFLCTL(SFLB)
+     A*%%TS  SD  20220815  181009  STACEYS     REL-V7R4M0  5770-WDS
+     A                                      CA08(08 'Format Clob')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A                                      PUTOVR
+     A                                      SFLCSRRRN(&CRRNB)
+     A N74                                  SFLDSP
+     A N75                                  SFLDSPCTL
+     A  75                                  SFLCLR
+     A N76                                  SFLEND(*MORE)
+     A                                      SFLSIZ(1000)
+     A                                      SFLPAG(0019)
+     A            CRRNB          5S 0H
+     A            FLD           10A  H
+     A            RCD           10A  H
+     A            RRNB           4S 0H      SFLRCDNBR(CURSOR)
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  2 61'CLOB Viewer'
+     A                                      DSPATR(HI)
+     A                                  4  3'File'
+     A                                      DSPATR(HI)
+     A            CFILE         10A  O  4 10
+     A                                  4 24'Field'
+     A                                      DSPATR(HI)
+     A            CFIELD        10A  O  4 32
+     A                                  4 45'AGuid'
+     A                                      DSPATR(HI)
+     A            CGUID         36A  O  4 52
+     A                                  4 93'Length'
+     A                                      DSPATR(HI)
+     A            CLEN           6S 0O  4101
+     A**
+     A          R SFLBF
+     A*%%TS  SD  20220815  181009  STACEYS     REL-V7R4M0  5770-WDS
+     A                                 26 27'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                 26  2'F8=Format'
+     A                                      COLOR(BLU)
+     A          R SF01
+     A*%%TS  SD  20260424  105850  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      CF04(04 'F4 = Prompt')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  2 60'Inbound Filter'
+     A                                      DSPATR(HI)
+     A                                  9  8'Receive Status'
+     A                                 10 11'Send Status'
+     A                                 11 15'Service'
+     A                                 13 36'Receive Date/Time'
+     A            RDFR          10A  B 15 24
+     A  40                                  ERRMSG('Invalid Date.' 40)
+     A                                 14 36'mm/dd/yyyy'
+     A                                      COLOR(BLU)
+     A            RTTO           8A  B 14 49
+     A  46                                  ERRMSG('Invalid Time.' 46)
+     A                                 14 59'hh:mm:ss'
+     A                                      COLOR(BLU)
+     A            FAGUID        36A  B  6 24CHECK(LC)
+     A            FRPGUID       36A  B  8 24CHECK(LC)
+     A            FRSTAT         1A  B  9 24
+     A  42                                  ERRMSG('Invalid From Status' 42)
+     A            FSSTAT         1A  B 10 24
+     A  43                                  ERRMSG('Invalid Send Status.' 43)
+     A            FSERVICE      40A  B 11 24CHECK(LC)
+     A  44                                  ERRMSG('Invalid Service Name.' 44)
+     A                                  9 28'F4=List'
+     A                                      COLOR(BLU)
+     A                                 10 28'F4=List'
+     A                                      COLOR(BLU)
+     A                                 11 67'F4=List'
+     A                                      COLOR(BLU)
+     A                                 26  2'F4=List'
+     A                                      COLOR(BLU)
+     A                                 26 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                 14 20'To'
+     A                                 15 18'From'
+     A            RDTO          10A  B 14 24
+     A  45                                  ERRMSG('Invalid Date.' 45)
+     A                                 15 36'mm/dd/yyyy'
+     A                                      COLOR(BLU)
+     A            RTFR           8A  B 15 49
+     A  41                                  ERRMSG('Invalid Time.' 41)
+     A                                 15 59'hh:mm:ss'
+     A                                      COLOR(BLU)
+     A                                  4 26'Selection'
+     A                                      COLOR(BLU)
+     A                                  6  4'Host Activity GUID'
+     A                                  7  5'Req Activity GUID'
+     A                                  8  7'Req Parent GUID'
+     A            FRAGUID       36A  B  7 24CHECK(LC)
+     A          R SFLC                      SFL
+     A*%%TS  SD  20220814  192816  STACEYS     REL-V7R4M0  5770-WDS
+     A            OPTION1        1A  I  7  4VALUES(' ' '1')
+     A            LISTVALUE    100A  O  7  8
+     A            RETVALUE      40A  H
+     A**
+     A          R SFLCC                     SFLCTL(SFLC)
+     A*%%TS  SD  20220815  181009  STACEYS     REL-V7R4M0  5770-WDS
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A                                      PUTOVR
+     A                                      SFLCSRRRN(&CRRNC)
+     A N77                                  SFLDSP
+     A N78                                  SFLDSPCTL
+     A  78                                  SFLCLR
+     A N79                                  SFLEND(*MORE)
+     A                                      SFLSIZ(1000)
+     A                                      SFLPAG(0018)
+     A            CRRNC          5S 0H
+     A            FLD           10A  H
+     A            RCD           10A  H
+     A            RRNC           4S 0H      SFLRCDNBR(CURSOR)
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  4  3'1=Select'
+     A                                      COLOR(BLU)
+     A                                  6  3'Opt'
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  2 59'Select from List'
+     A                                      DSPATR(HI)
+     A                                  6  8'Description'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A**
+     A          R SFLCF
+     A*%%TS  SD  20220814  191959  STACEYS     REL-V7R4M0  5770-WDS
+     A                                 26  2'F12=Cancel'
+     A                                      COLOR(BLU)
+     A          R SFLD                      SFL
+     A*%%TS  SD  20231228  223548  STACEYS     REL-V7R5M0  5770-WDS
+     A            OPTION2        2A  I  8  3VALUES('  ' 'SD' 'SH' 'SR' ' L' 'L -
+     A                                      ' '2 ' ' 2')
+     A            AGUID         36A  O  8  8
+     A            RESPONSE      75A  O  9 52
+     A            SSERVICE      10A  O  8 45
+     A            SNDSTAT        1A  O  8 57
+     A            SNDTS         26A  O  8 71
+     A                                  9 46'Resp:'
+     A                                      DSPATR(HI)
+     A            PGUID         36A  O  9  8
+     A                                  9  5'P:'
+     A                                      DSPATR(HI)
+     A            ATTMPS         2S 0O  8 61
+     A            OTYPE          1A  O  8 67
+     A**
+     A          R SFLDC                     SFLCTL(SFLD)
+     A*%%TS  SD  20240102  231810  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      CF09(09 'Filter')
+     A                                      CA03(03 'Exit')
+     A                                      CA05(05 'Refresh')
+     A                                      CA11(11 'Swap')
+     A                                      CA01(01 'Functions')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A                                      PUTOVR
+     A                                      SFLCSRRRN(&CRRND)
+     A N67                                  SFLDSP
+     A N68                                  SFLDSPCTL
+     A  68                                  SFLCLR
+     A N69                                  SFLEND(*MORE)
+     A                                      SFLDROP(CF07)
+     A                                      SFLSIZ(1000)
+     A                                      SFLPAG(0008)
+     A  30                                  SFLMSG('More than 9999 results retu-
+     A                                      rned.  Try narrowing your search re-
+     A                                      sults.')
+     A            CRRND          5S 0H
+     A            FLD           10A  H
+     A            RCD           10A  H
+     A            RRND           4S 0H      SFLRCDNBR(CURSOR)
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  4  3'SD=Send Data'
+     A                                      COLOR(BLU)
+     A                                  7  3'Opt'
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7  8'AGUID                             -
+     A                                        '
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  7 45'Service   '
+     A                                      DSPATR(UL)
+     A                                      DSPATR(HI)
+     A                                  4 17'SH=Send Header'
+     A                                      COLOR(BLU)
+     A                                  4 52'L=View GUID Log'
+     A                                      COLOR(BLU)
+     A                                  2 63'Outbound'
+     A                                      DSPATR(HI)
+     A                                  7 56'Sts'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  7 60'Trys'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  7 71'Time Stamp                '
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  4 33'SR=Send Response'
+     A                                      COLOR(BLU)
+     A                                  7 66'Typ'
+     A                                      DSPATR(HI)
+     A                                      DSPATR(UL)
+     A                                  5  3'2=Update'
+     A                                      COLOR(BLU)
+     A**
+     A          R SFLDF
+     A*%%TS  SD  20240102  231810  STACEYS     REL-V7R5M0  5770-WDS
+     A                                 26 16'F3=Exit'
+     A                                      COLOR(BLU)
+     A                                 26 37'F7=Fold'
+     A                                      COLOR(BLU)
+     A                                 26 46'F9=Filter'
+     A                                      COLOR(BLU)
+     A                                 26 58'F11=Swap'
+     A                                      COLOR(BLU)
+     A                                 26 90'Results Returned:'
+     A            RETURNNUM      4S 0O 26108
+     A                                 26 25'F5=Refresh'
+     A                                      COLOR(BLU)
+     A                                 26  2'F1=Functions'
+     A                                      COLOR(BLU)
+     A          R SF02
+     A*%%TS  SD  20220920  204434  STACEYS     REL-V7R4M0  5770-WDS
+     A                                      CF04(04 'F4 = Prompt')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  2 59'Outbound Filter'
+     A                                      DSPATR(HI)
+     A                                  6  9'Activity GUID'
+     A                                  7 11'Parent GUID'
+     A                                  9 11'Send Status'
+     A                                 10 15'Service'
+     A                                 12 36'Send Date/Time'
+     A            SDFR          10A  B 14 24
+     A  40                                  ERRMSG('Invalid Date.' 40)
+     A                                 13 36'mm/dd/yyyy'
+     A                                      COLOR(BLU)
+     A            STTO           8A  B 13 49
+     A  46                                  ERRMSG('Invalid Time.' 46)
+     A                                 13 59'hh:mm:ss'
+     A                                      COLOR(BLU)
+     A            FAGUID        36A  B  6 24CHECK(LC)
+     A            FPGUID        36A  B  7 24CHECK(LC)
+     A            FSSTAT         1A  B  9 24
+     A  43                                  ERRMSG('Invalid Send Status.' 43)
+     A            FSSERVICE     10A  B 10 24CHECK(LC)
+     A  44                                  ERRMSG('Invalid Service Name.' 44)
+     A                                  9 27'F4=List'
+     A                                      COLOR(BLU)
+     A                                 10 35'F4=List'
+     A                                      COLOR(BLU)
+     A                                 26  2'F4=List'
+     A                                      COLOR(BLU)
+     A                                 26 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                 13 20'To'
+     A                                 14 18'From'
+     A            SDTO          10A  B 13 24
+     A  45                                  ERRMSG('Invalid Date.' 45)
+     A                                 14 36'mm/dd/yyyy'
+     A                                      COLOR(BLU)
+     A            STFR           8A  B 14 49
+     A  41                                  ERRMSG('Invalid Time.' 41)
+     A                                 14 59'hh:mm:ss'
+     A                                      COLOR(BLU)
+     A                                  4 26'Selection'
+     A                                      COLOR(BLU)
+     A                                  8 13'Send Type'
+     A            FSTYPE         1   B  8 24
+     A                                  8 27'H=Host Originated, R=Request Respo-
+     A                                      nse, B=Both'
+     A                                      COLOR(BLU)
+     A          R SF03
+     A*%%TS  SD  20241007  232711  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      CF04(04 'F4 = Prompt')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  2 57'Additional Functions'
+     A                                      DSPATR(HI)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                 26 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                  7 23'1=Select'
+     A                                      DSPATR(HI)
+     A            WWPARMS        1A  B  8 23
+     A                                  8 26'Work With Parameters'
+     A            WWSBSJOB       1A  B  9 23
+     A                                  9 26'Work With Subsystem Jobs'
+     A            WWCTLQ         1A  B 10 23
+     A                                 10 26'Work With Control Queue'
+     A            COMTEST        1A  B 11 23
+     A                                 11 26'Host Communication Test'
+     A            DISPDATA       1A  B 12 23
+     A                                 12 26'Display BSL Subsystem Data Area'
+     A            DSPVERSN       1   B 13 23
+     A                                 13 26'Display Service List (HBSVERSN)'
+     A          R SF04
+     A*%%TS  SD  20231228  223548  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      CF04(04 'F4 = Prompt')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  2 56'Outbound Update Status'
+     A                                      DSPATR(HI)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                 26 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                  6 14'Parent GUID'
+     A                                  7 12'Activity GUID'
+     A                                  8 18'Service'
+     A                                  9 15'Old Status'
+     A                                 11 15'New Status'
+     A            OUTPGUID      36   O  6 27
+     A            OUTAGUID      36   O  7 27
+     A            OUTSERVICE    10   O  8 27
+     A            OLDSTATUS      1   O  9 27
+     A            NEWSTATUS      1   B 11 27
+     A          R SF05
+     A*%%TS  SD  20240427  183335  STACEYS     REL-V7R5M0  5770-WDS
+     A                                      CA13(13 'F13 = Reset')
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 60'HBS Dashboard'
+     A                                      DSPATR(HI)
+     A                                  2 60'Reset Request'
+     A                                      DSPATR(HI)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                 26 13'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                  6 14'Parent GUID'
+     A                                  7 12'Activity GUID'
+     A                                  8 18'Service'
+     A            RESPGUID      36A  O  6 27
+     A            RESAGUID      36A  O  7 27
+     A            RESSERVICE    40A  O  8 27
+     A            RESSTATUS      1A  O  9 27
+     A                                  9 19'Status'
+     A                                 13 27'The following actions will be pefo-
+     A                                      rmed.'
+     A                                 15 30'1. The HBSRECV record will have th-
+     A                                      e status changed to N.'
+     A                                 17 30'2. The HBSSEND record will be dele-
+     A                                      ted.'
+     A                                 11 27'This option is used to assist in d-
+     A                                      ebugging request Host Services.'
+     A                                 19 28'Press F13 to contiue with the Rese-
+     A                                      t'
+     A                                 26 26'F13=Reset'
+     A                                      COLOR(BLU)
+     A          R SF06
+     A*26001 04/23/26 S Smith - Transaction detail screen (HBSTRANS)
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 56'HBS Dashboard - Transaction Detail'
+     A                                      DSPATR(HI)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                  6  2'Activity GUID:'
+     A                                      DSPATR(HI)
+     A            D6AGUID       36A  O  6 17
+     A                                  7  4'Parent GUID:'
+     A                                      DSPATR(HI)
+     A            D6PGUID       36A  O  7 17
+     A                                  8  9'Type:'
+     A                                      DSPATR(HI)
+     A            D6TYPE        10A  O  8 15
+     A                                  8 28'Rcv Sts:'
+     A                                      DSPATR(HI)
+     A            D6RCVSTS       1A  O  8 37
+     A                                  8 40'Snd Sts:'
+     A                                      DSPATR(HI)
+     A            D6SNDSTS       1A  O  8 49
+     A                                  8 52'Attempts:'
+     A                                      DSPATR(HI)
+     A            D6ATTMPS       3S 0O  8 62
+     A                                  9  6'Rcv Time:'
+     A                                      DSPATR(HI)
+     A            D6RCVTS       26A  O  9 16
+     A                                  9 44'Snd Time:'
+     A                                      DSPATR(HI)
+     A            D6SNDTS       26A  O  9 54
+     A                                 10  4'Service Name:'
+     A                                      DSPATR(HI)
+     A            D6SNAME       40A  O 10 18
+     A                                 10 61'Program:'
+     A                                      DSPATR(HI)
+     A            D6PNAME       10A  O 10 70
+     A                                 26  2'Opt:'
+     A                                      COLOR(GRN)
+     A            D6OPT          2A  B 26  8
+     A                                 26 12'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                 26 24'RH=Req Body'
+     A                                      COLOR(BLU)
+     A                                 26 37'SH=Resp Body'
+     A                                      COLOR(BLU)
+ 

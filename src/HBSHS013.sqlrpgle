@@ -2,22 +2,34 @@
        ctl-opt dftactgrp(*NO) actgrp(*CALLER);
        ctl-opt bnddir('HBSBIND') DECEDIT('0.');
 
+ssp22  // guid logs to hbslogf
+ssp21  // Conditional logging
 24000  // 09/10/24 #1180496 S Smith - New service to list entries in HBSVERSN
        //--------------------------------------------------------------------
        //   Copyright 1988-2024 by:  Jack Henry & Associates, Inc. //
        //                      Jack Henry & Associates, inc.                -
        //                      Monett, Missouri  65708                      -
        //--------------------------------------------------------------------
-       dcl-ds dsJSONPackage qualified template;
-         PGUID char(36) inz('');
-         AGUID char(36) inz('');
-         clob varchar(2000000) inz('');
-       end-ds;
+       //dcl-ds dsJSONPackage qualified template;
+       //  PGUID char(36) inz('');
+       //  AGUID char(36) inz('');
+       //  clob varchar(2000000) inz('');
+       //end-ds;
 
        dcl-s @RequestPtr  pointer;
        dcl-s @ResponsePtr pointer;
-       dcl-ds dsRequest likeds(dsJSONPackage) based(@RequestPtr);
-       dcl-ds dsResponse likeds(dsJSONPackage);
+       //dcl-ds dsRequest likeds(dsJSONPackage) based(@RequestPtr);
+       //dcl-ds dsResponse likeds(dsJSONPackage);
+       dcl-ds dsRequest qualified based(@RequestPtr);
+         Pguid char(36);
+         AGuid char(36);
+         clob varchar(32000);
+       end-ds;
+       dcl-ds dsResponse qualified;
+         Pguid char(36);
+         AGuid char(36);
+         clob varchar(2000000);
+       end-ds;
 
        dcl-ds dsReqJSON qualified;
          SortBy char(10) inz('');
@@ -34,6 +46,8 @@
 
        dcl-ds dsResJSON qualified;
          Success ind inz('0');
+sasx     CrtLogEvent ind inz('0');
+sasx     AppErrLog ind inz('0');
          num_ResponseDetailCollection int(10) inz(0);
          dcl-ds ResponseDetailCollection dim(20);
            ResponseCode int(10) inz(0);
@@ -90,7 +104,7 @@
        /include qcpysrc,hbssrv
        /undefine CrtLogEvent_prototype
 
-       /include qcpysrc,hbstools
+ssp22  /include qcpysrc,hbstools
        /include qcpysrc,hbspsds
        /include qcpysrc,jhdateucpy
        /copy qcpysrc,sqlstruct
@@ -122,15 +136,37 @@
        dsResponse.PGUID = dsRequest.PGUID;
        dsResponse.AGUID = dsRequest.AGUID;
 
-       hbstools_Actvty(dsRequest.PGUID:dsRequest.AGUID:560000:
-            ' ' + %trim(myPSDS.Procname) + ' started');
+ssp22  //hbstools_Actvty(dsRequest.PGUID:dsRequest.AGUID:560000:
+ssp22  //     ' ' + %trim(myPSDS.Procname) + ' started');
 
        myActivityId = dsRequest.AGUID;
        myPgm = mypsds.ProcName;
        myJobNbr = %char(mypsds.JobNbr);
        myJobName = mypsds.JobName;
 
+ssp22  // Insert a record into hbslogf
+ssp22     hbstools_CrtLog(myActivityId
+ssp22                     :'GUIDLOG'
+ssp22                     :''
+ssp22                     :'560000'
+ssp22                     : %trim(myPSDS.Procname) + ' started'
+ssp22                     :myPgm
+ssp22                     :myJobName
+ssp22                     :myJobNbr
+ssp22                     :'Y');
+
        dsHBSSBSCTL = GetDataArea('HBSSBSCTL':'*LIBL');
+
+sasx   if %subst(RtnOpts:1:1) = 'Y';
+sasx     dsResJson.CrtLogEvent = *on;
+sasx   else;
+sasx     dsResJson.crtLogEvent = *off;
+sasx   endif;
+sasx   if %subst(RtnOpts:2:1) = 'Y';
+sasx     dsResJson.AppErrLog = *on;
+sasx   else;
+sasx     dsResJson.AppErrLog = *off;
+sasx   endif;
 
        MoreInfoInit();
 
@@ -250,7 +286,7 @@
       //---------------------------------------------------------
        dcl-proc ParseJSON;
          dcl-pi *n;
-           pJSON varchar(2000000);
+           pJSON varchar(32000);
          END-PI;
 
        dcl-s DataIntoOptions varchar(200);
@@ -285,8 +321,14 @@
 
          if Error;
            dsResJSON.success = *off;
+ssp23      hbstools_AddIdx(dsRequest.AGUID
+ssp23                     :'SUCCESS'
+ssp23                     :'FALSE');
          else;
            dsResJSON.success = *on;
+ssp23      hbstools_AddIdx(dsRequest.AGUID
+ssp23                     :'SUCCESS'
+ssp23                     :'TRUE');
          endif;
 
          %len(dsResponse.Clob) = 0;
@@ -472,4 +514,4 @@
 
        /define CrtLogEvent_more
        /include qcpysrc,hbssrv
-       /undefine CrtLogEvent_more
+       /undefine CrtLogEvent_more 

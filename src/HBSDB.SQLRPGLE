@@ -21,7 +21,7 @@
                                          sfile(sflb: rrnb)
                                          sfile(sflc: rrnc)
                                          sfile(sfld: rrnd);
-       dcl-f hbsversn keyed usage(*input) usropn;
+    //    dcl-f hbsversn keyed usage(*input) usropn;
 
        Dcl-Pr EntryParm ExtPgm('HBSDB');
        End-Pr;
