@@ -1002,13 +1002,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                    resstatus = rcvStat;
                    exfmt SF05;
                    if gInd.ResetReq;
-                     exec sql
-                       update hbsrecv
-                         set hrstat = 'N'
-                         where hractvtid = :AGuid;
-                     exec sql
-                       delete hbssend
-                         where hsactvtid = :AGuid;
+26001                exec sql
+26001                  update hbstrans
+26001                    set htrcvsts = 'N', htsndsts = 'N'
+26001                    where htguid = :AGuid;
+26001                exec sql
+26001                  delete from hbresp
+26001                    where hsguid = :AGuid;
                    endif;
                     build = *on;
                  endsl;
