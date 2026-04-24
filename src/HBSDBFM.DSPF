@@ -94,8 +94,10 @@
      A                                      DSPATR(HI)
      A                                  3 17'V=View Detail'
      A                                      COLOR(BLU)
-     A*                                  4 17'SH=Send Header'
-     A*                                     COLOR(BLU)
+     A                                  3 33'RH=Recv Header'
+     A                                      COLOR(BLU)
+     A                                  4 17'SH=Send Header'
+     A                                      COLOR(BLU)
      A                                  4 33'SR=Send Resp'
      A                                      COLOR(BLU)
      A                                  7 92'Scs'
@@ -544,4 +546,62 @@
      A                                 19 28'Press F13 to contiue with the Rese-
      A                                      t'
      A                                 26 26'F13=Reset'
+     A                                      COLOR(BLU)
+     A          R SF06
+     A*26001 04/23/26 S Smith - Transaction detail screen (HBSTRANS)
+     A                                      RTNCSRLOC(&RCD &FLD)
+     A            RCD           10A  H
+     A            FLD           10A  H
+     A                                  1  2DATE
+     A                                      EDTCDE(Y)
+     A                                  1124TIME
+     A                                  1 56'HBS Dashboard - Transaction Detail'
+     A                                      DSPATR(HI)
+     A                                  2110'Subsystem :'
+     A                                      DSPATR(HI)
+     A                                  3110'Run Lib. .:'
+     A                                      DSPATR(HI)
+     A                                  4110'Dat Lib. .:'
+     A                                      DSPATR(HI)
+     A            HBSSBSNAM     10A  O  2122COLOR(YLW)
+     A            HBSRUNLIB     10A  O  3122COLOR(YLW)
+     A            HBSDATLIB     10A  O  4122COLOR(YLW)
+     A                                  6  2'Activity GUID:'
+     A                                      DSPATR(HI)
+     A            D6AGUID       36A  O  6 17
+     A                                  7  4'Parent GUID:'
+     A                                      DSPATR(HI)
+     A            D6PGUID       36A  O  7 17
+     A                                  8  9'Type:'
+     A                                      DSPATR(HI)
+     A            D6TYPE        10A  O  8 15
+     A                                  8 28'Rcv Sts:'
+     A                                      DSPATR(HI)
+     A            D6RCVSTS       1A  O  8 37
+     A                                  8 40'Snd Sts:'
+     A                                      DSPATR(HI)
+     A            D6SNDSTS       1A  O  8 49
+     A                                  8 52'Attempts:'
+     A                                      DSPATR(HI)
+     A            D6ATTMPS       3S 0O  8 62
+     A                                  9  6'Rcv Time:'
+     A                                      DSPATR(HI)
+     A            D6RCVTS       26A  O  9 16
+     A                                  9 44'Snd Time:'
+     A                                      DSPATR(HI)
+     A            D6SNDTS       26A  O  9 54
+     A                                 10  4'Service Name:'
+     A                                      DSPATR(HI)
+     A            D6SNAME       40A  O 10 18
+     A                                 10 61'Program:'
+     A                                      DSPATR(HI)
+     A            D6PNAME       10A  O 10 70
+     A                                 26  2'Opt:'
+     A                                      COLOR(GRN)
+     A            D6OPT          2A  B 26  8
+     A                                 26 12'F12=Cancel'
+     A                                      COLOR(BLU)
+     A                                 26 24'RH=Req Body'
+     A                                      COLOR(BLU)
+     A                                 26 37'SH=Resp Body'
      A                                      COLOR(BLU)

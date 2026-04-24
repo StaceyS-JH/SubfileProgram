@@ -179,6 +179,31 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          Success ind inz(*off);
        end-ds;
 
+26001  dcl-ds dsSF06 qualified;
+         aguid    char(36);
+         pguid    char(36);
+         type     char(10);
+         rcvsts   char(1);
+         sndsts   char(1);
+         attmps   int(10);
+         rcvts    char(26);
+         sndts    char(26);
+         sname    varchar(40);
+         pname    char(10);
+       end-ds;
+
+       dcl-s d6aguid  char(36);
+       dcl-s d6pguid  char(36);
+       dcl-s d6type   char(10);
+       dcl-s d6rcvsts char(1);
+       dcl-s d6sndsts char(1);
+       dcl-s d6attmps zoned(3:0);
+       dcl-s d6rcvts  char(26);
+       dcl-s d6sndts  char(26);
+       dcl-s d6sname  char(40);
+       dcl-s d6pname  char(10);
+26001  dcl-s d6opt    char(2);
+
 24001  dcl-ds dsHBSSBSCTL;
          d_SBSName char(10);
          d_SBSLib char(10);
@@ -249,7 +274,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          crrna = 0;
          rrna = 0;
 
-26001    SQLStatement = ' SELECT  HTRQAGUID, HTRQPGUID,' +
+26001    SQLStatement = ' SELECT  HTGUID, ' +
+           'cast(' + tic + tic + ' as char(36)), ' +
            'cast(HTREQHDR as char(500)),'                 +
            'HTRCVSTS, '                                   +
            'cast(HTRCVTS as char(26)), '                  +
@@ -403,10 +429,14 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          select;
 26001      when inFile = 'HBSREQ';
              guidkey = 'HRGUID';
-           when inFile = 'HBSRECV';
-             guidkey = 'HRACTVTID';
-           when inFile = 'HBSSEND';
-             guidkey = 'HSACTVTID';
+26001      when inFile = 'HBSTRANS';
+             guidkey = 'HTGUID';
+26001      when inFile = 'HBRESP';
+             guidkey = 'HSGUID';
+        //    when inFile = 'HBSRECV';
+        //      guidkey = 'HRACTVTID';
+        //    when inFile = 'HBSSEND';
+            //  guidkey = 'HSACTVTID';
            when inFile = 'HBSGUIDLOG';
              guidkey = 'HGACTVTID';
          endsl;
@@ -929,18 +959,20 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                  select;
 26001            when option2 = 'RD';
                    ViewCLOB('HBSREQ': 'HRBODY': AGuid);
+                 when %trim(option2) = 'V';
+26001              ShowDetail(AGuid);
                  when option2 = 'RH';
-                   ViewCLOB('HBSRECV': 'HRRCVHDR': AGuid);
+                   ViewCLOB('HBSTRANS': 'HTREQHDR': AGuid);
                  when option2 = 'SD';
-                   ViewClob('HBSSEND': 'HSSNDDTA': AGuid);
+                   ViewClob('HBRESP': 'HSBODY': AGuid);
                  when option2 = 'SH';
-                   ViewClob('HBSSEND': 'HSSNDHDR': AGuid);
-                 when option2 = 'SR';
-                   ViewClob('HBSSEND': 'HSRSPNSE': AGuid);
+                   ViewClob('HBSTRANS': 'HTRESHDR': AGuid);
+                //  when option2 = 'SR';
+                //    ViewClob('HBSSEND': 'HSRSPNSE': AGuid);
                  when %trim(option2) = 'L';
                    ViewClob('HBSGUIDLOG': 'HGJSONLOG': AGuid);
-                 when %trim(option2) = 'V';
-                   ViewJSON(AGuid);
+                //  when %trim(option2) = 'V';
+                //    ViewJSON(AGuid);
                  when %trim(option2) = '2';
                    outpguid = PGuid;
                    outaguid = AGuid;
@@ -1300,6 +1332,55 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 
        end-proc;
 
+
+      //---------------------------------------------------------
+      // ShowDetail - Display HBSTRANS detail screen (SF06)
+      //---------------------------------------------------------
+26001  dcl-proc ShowDetail;
+26001    dcl-pi *n;
+26001      pGuid char(36) const;
+26001    end-pi;
+26001
+26001    exec sql
+26001      select HTRQAGUID, HTRQPGUID, HTTYPE,
+26001             HTRCVSTS, HTSNDSTS, HTATTEMPTS,
+26001             cast(HTRCVTS as char(26)),
+26001             cast(HTSNDTS as char(26)),
+26001             HTSNAME, HTPNAME
+26001        into :dsSF06.aguid,  :dsSF06.pguid,  :dsSF06.type,
+26001             :dsSF06.rcvsts, :dsSF06.sndsts, :dsSF06.attmps,
+26001             :dsSF06.rcvts,  :dsSF06.sndts,
+26001             :dsSF06.sname,  :dsSF06.pname
+26001        from hbstrans
+26001        where HTGUID = :pGuid;
+26001
+26001    d6aguid  = dsSF06.aguid;
+26001    d6pguid  = dsSF06.pguid;
+26001    d6type   = dsSF06.type;
+26001    d6rcvsts = dsSF06.rcvsts;
+26001    d6sndsts = dsSF06.sndsts;
+26001    d6attmps = dsSF06.attmps;
+26001    d6rcvts  = dsSF06.rcvts;
+26001    d6sndts  = dsSF06.sndts;
+26001    d6sname  = %trim(dsSF06.sname);
+26001    d6pname  = dsSF06.pname;
+26001    d6opt    = *blanks;
+26001
+26001    dow gInd.Previous = *off;
+26001      exfmt SF06;
+26001      if gInd.Previous;
+26001        leave;
+26001      endif;
+26001      select;
+26001        when %trim(d6opt) = 'RH';
+26001          ViewCLOB('HBSREQ'  : 'HRBODY'  : pGuid);
+26001        when %trim(d6opt) = 'SH';
+26001          ViewCLOB('HBRESP'  : 'HSBODY'  : pGuid);
+26001      endsl;
+26001      d6opt = *blanks;
+26001    enddo;
+26001
+26001  end-proc;
 
 24001  dcl-proc GetDataArea;
 24001    dcl-pi *n char(1024);
