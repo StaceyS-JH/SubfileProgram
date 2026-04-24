@@ -11,6 +11,7 @@
       //                         Monett, Missouri  65708          //
       // ---------------------------------------------------------//
 
+26001 // 04/23/26 #xxxxxxx  S Smith - Convert inbound list from hbsrecv/hbssend to hbstrans
 24002 // 10/07/24 #1180779  S Smith - V3 Enhancements
 24001 // 06/5/24 #1179375  V Everett - expand HBSSBSCTL
 23001 // 04/10/23 #1179389 S Smith - Dashboard V2
@@ -248,18 +249,17 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          crrna = 0;
          rrna = 0;
 
-         SQLStatement = ' SELECT  r.hractvtid, r.hrparntid,' +
-           'cast(r.hrrcvhdr as char(500)),'                  +
-           'r.hrstat, '                                      +
-           'cast(r.hrrowmnt as char(26)), '                  +
-           'coalesce(s.hsstat,' + tic + '-' + tic +'), '              +
-           'coalesce(cast(s.hsrowmnt as char(26)),'+tic+'-'+tic+'), ' +
-           'coalesce(cast(s.hssnddta as varchar(25)),'+tic+'-'+tic+')  '  +
-         'From hbsrecv r left join hbssend s '               +
-         '  on r.hractvtid = s.hsactvtid  '                  +
-         'where @W '                                         +
-         'Order by '                                         +
-         '  r.hrrowmnt desc '                                +
+26001    SQLStatement = ' SELECT  HTRQAGUID, HTRQPGUID,' +
+           'cast(HTREQHDR as char(500)),'                 +
+           'HTRCVSTS, '                                   +
+           'cast(HTRCVTS as char(26)), '                  +
+           'coalesce(HTSNDSTS,' + tic + '-' + tic +'), '             +
+           'coalesce(cast(HTSNDTS as char(26)),' + tic + '-' + tic + '), ' +
+           'cast(' + tic + tic + ' as varchar(25)) '     +
+         'From hbstrans '                                +
+         'where @W '                                     +
+         'Order by '                                     +
+         '  HTRCVTS desc '                               +
          'For Read Only';
 
          SQLStatement = %scanrpl('@W':WhereStatement:SQLStatement);
@@ -660,13 +660,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 25001  rdfr = %char(%date()-%days(3):*usa/);
        rtfr = %char(%time('00.00.00'):*HMS);
 
-       WhereStatement = 'r.hrrowmnt >= ' + tic +
+26001  WhereStatement = 'HTRCVTS >= ' + tic +
         %char(
         %timestamp(%char(%date(rdfr:*usa):*ISO) +
         '-' + %char(%time(rtfr:*HMS):*ISO) +
         '.000000')) + tic;
        WhereStatement = %trim(WhereStatement) +
-         ' and r.hrrcvhdr not like ' + tic + '%SubsystemControl%' + tic;
+26001    ' and HTREQHDR not like ' + tic + '%SubsystemControl%' + tic;
 
        end-proc;
 
