@@ -276,6 +276,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          gInd.Sfla_Empty = *off;
          crrna = 0;
          rrna = 0;
+         blockSize = %Elem($dsREC);
+         noMoreRows = *off;
 
 26001    SQLStatement = ' SELECT  HTGUID, ' +
 26001      'HTRQPGUID, '                                  +
@@ -334,10 +336,10 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
                  mysqlclobdata_data = '';
                  mysqlclobdata_len = 0;
 
-24002            exec sql
-24002              select hrrcvdta into :mysqlclobdata
-24002                from hbsrecv
-24002                where hractvtid = :aguid;
+26001            exec sql
+26001              select HRBODY into :mysqlclobdata
+26001                from HBSREQ
+26001                where HRGUID = :aguid;
 
                  myclobdata = %trim(mysqlclobdata_data);
 
@@ -684,7 +686,8 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
         '-' + %char(%time(rtfr:*HMS):*ISO) +
         '.000000')) + tic;
        WhereStatement = %trim(WhereStatement) +
-26001    ' and HTREQHDR not like ' + tic + '%SubsystemControl%' + tic;
+26001    ' and HTREQHDR not like ' + tic +
+26001    '%SubsystemControl%' + tic;
 
        end-proc;
 
@@ -883,8 +886,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
           endif;
 
           if frstat <> *blanks;
+26001       if WhereStatement = *blanks;
 26001         WhereStatement = 'HTRCVSTS = ' + tic +
-              frstat + tic;
+                frstat + tic;
+26001       else;
+26001         WhereStatement += ' AND HTRCVSTS = ' + tic +
+                frstat + tic;
+26001       endif;
           endif;
           if fsstat <> *blanks;
             if WhereStatement = *blanks;
@@ -937,8 +945,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                 '.000000')) + tic;
             endif;
           endif;
-26001  WhereStatement = %trim(WhereStatement) +
-26001    ' and HTREQHDR not like ' + tic + '%SubsystemControl%' + tic;
+26001  if WhereStatement = *blanks;
+26001    WhereStatement = 'HTREQHDR not like ' + tic +
+26001      '%SubsystemControl%' + tic;
+26001  else;
+26001    WhereStatement += ' AND HTREQHDR not like ' + tic +
+26001      '%SubsystemControl%' + tic;
+26001  endif;
 
           done = *on;
           endif;

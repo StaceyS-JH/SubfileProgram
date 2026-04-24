@@ -230,6 +230,61 @@ A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 
     **Decision point is `HBSHANDLR`**, not `HBSWRITER`. Since `HBSHANDLR` constructs the response and already knows the success/error outcome before calling `WrtSend`, it can simply skip creating the User Space and sending the DQ message when storage is not required — nothing reaches `HBSWRITER` at all for suppressed records. This keeps `HBSWRITER` simple and stateless. The `LogReqData`/`LogRespData` values are already available in `gCrtLogEvent`/`gAppErrLog` style globals once `GetWorkData` returns, requiring no additional queries.
 
+## 7. NTQuery Service Name Enrichment
+
+### 7.1. Background
+
+`NTQuery` (registered as `NTQuery` in `HBSVERSN`) is a single service entry point that multiplexes many distinct query types. The actual query being executed is identified by a `QueryNum` field nested inside the JSON request body (`HeaderInfo.QueryNum`). `HBSVERSN` has one row for `NTQuery`, so `HTSNAME` in `HBSTRANS` is written as the plain service name `NTQuery` for every transaction — the specific query number is not visible in the dashboard or in any operational query against `HBSTRANS`.
+
+`NTQuery` is not a high-volume service today, but it has the potential to become **the single largest category of inbound requests** to the BSL Subsystem as more downstream systems adopt it. When that happens, the dashboard row `NTQuery` will be meaningless for triage without knowing which query was called.
+
+### 7.2. Existing Functionality: Query Number Resolved at Display Time in `HBSDB`
+
+The current implementation resolves the query number **at display time** inside `HBSDB.Build_In_List`. When `service = 'NTQuery'` is detected for a row, the code performs an additional `SELECT HRBODY FROM HBSREQ WHERE HRGUID = :aguid`, parses the returned JSON CLOB via `data-into YAJLINTO`, and builds the enriched service name:
+
+```rpgle
+service = 'NTQuery' + NTQuery.HeaderInfo.QueryNum;
+```
+
+The `QueryNum` field is declared as `char(16)` (zero-padded), so `'0000000000000414'` produces `'NTQuery0000000000000414'` — however in practice only the last 3 digits are meaningful and are used for display (e.g. `'NTQuery414'`).
+
+**This approach requires no changes to `HBSWORK`, `HBSHANDLR`, or any other program.** The cost is one synchronous CLOB read per NTQuery row on every dashboard refresh. At current volumes this is acceptable. The `24002`-tagged declarations (`mysqlclobdata`, `myclobdata`, `NtQuery` DS) and the special-case block remain in `HBSDB` to support this.
+
+### 7.3. Future Option: Embed QueryNum in the BSL Service Return String
+
+When NTQuery volume grows and the display-time CLOB read cost becomes a concern, the cleanest upgrade path requires **no new parameters and no changes to `HBSWORK`**. The NTQuery BSL service already returns a response string through `HBSHANDLR` via the existing call interface. The convention is:
+
+**Reserve positions 1–3 of the NTQuery return string for the 3-digit query number suffix.** No other BSL service uses these positions for this purpose — the convention is specific to NTQuery and documented here. The NTQuery BSL service populates positions 1–3 with the last 3 digits of `QueryNum` (e.g. `'414'`) before returning.
+
+`HBSHANDLR` then inspects the return string immediately after `CallHostProgram` returns, before calling `WrtTrans`:
+
+```rpgle
+// NTQuery returns query number suffix in return string positions 1-3
+if %trim(gServiceName) = 'NTQuery'
+     and %subst(ReturnString: 1: 3) <> *blanks;
+  gServiceName = 'NTQuery' + %subst(ReturnString: 1: 3);
+endif;
+```
+
+`WrtTrans` writes the enriched `gServiceName` into `HTSNAME` — no interface change, no additional SQL, zero compute overhead beyond what the return string handling already does.
+
+With `HTSNAME` pre-populated as `'NTQuery414'`, `'NTQuery290'`, etc., `HBSDB.Build_In_List` reads the enriched value directly from `HBSTRANS` and the NTQuery special-case block can be removed entirely, eliminating the per-row CLOB read on every dashboard refresh.
+
+### 7.4. `HBSVERSN` Filter Compatibility
+
+Either approach produces the same enriched display value. The `HTSNAME like '%NTQuery%'` filter in the inbound filter screen (`HBSDBFM SF01`, field `FSERVICE`) works without change — `'NTQuery414'` matches `'%NTQuery%'`. If operators want to filter on a specific query number they can enter `NTQuery414` directly, which resolves to `HTSNAME like '%NTQuery414%'`.
+
+### 7.5. Implementation Checklist (Future Option Only)
+
+The existing display-time approach requires no implementation steps. The following applies only if the decision is made to move extraction to write time:
+
+| Step | Program | Action |
+|---|---|---|
+| 1 | NTQuery BSL service | Populate positions 1–3 of the return string with the last 3 digits of `QueryNum` before returning to `HBSHANDLR`. Document this as a reserved convention for NTQuery. |
+| 2 | `HBSHANDLR.SQLRPGLE` | After `CallHostProgram` returns, check: if service is `NTQuery` and `%subst(ReturnString:1:3) <> *blanks`, set `gServiceName = 'NTQuery' + %subst(ReturnString:1:3)`. `WrtTrans` then writes the enriched name into `HTSNAME` with no further changes. |
+| 3 | `HBSDB.SQLRPGLE` | Remove the `if service = 'NTQuery'` special-case block from `Build_In_List`. Remove `mysqlclobdata`, `myclobdata`, and `NtQuery` DS declarations. Tag removals with the active change tag. |
+| 4 | Smoke test | Confirm a live `NTQuery` transaction shows `NTQuery414` (or appropriate suffix) in the `HBSDB` inbound list and in `HBSTRANS.HTSNAME`. |
+
 ## 8. HBSCHILD1 Cleanup Work (April 2026)
 
 A focused cleanup pass was performed on `HBSCHILD1.SQLRPGLE` during April 2026 to address several technical debt items identified in code review. These changes are complete and in the local codebase. The IBM i source member should be updated at next deployment.
