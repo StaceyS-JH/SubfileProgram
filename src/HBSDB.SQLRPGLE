@@ -253,8 +253,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
            'cast(HTREQHDR as char(500)),'                 +
            'HTRCVSTS, '                                   +
            'cast(HTRCVTS as char(26)), '                  +
-           'coalesce(HTSNDSTS,' + tic + '-' + tic +'), '             +
-           'coalesce(cast(HTSNDTS as char(26)),' + tic + '-' + tic + '), ' +
+           'HTSNDSTS, '                                   +
+           'cast(HTSNDTS as char(26)), '                  +
            'cast(' + tic + tic + ' as varchar(25)) '     +
          'From hbstrans '                                +
          'where @W '                                     +
