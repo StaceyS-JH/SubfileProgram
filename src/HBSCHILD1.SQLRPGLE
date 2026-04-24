@@ -792,7 +792,8 @@ M03    w_dtaqlib = d_BankLib;
           w_stat = p_stat;
 
           Exec SQL
-            update HBSTRANS set HTSNDSTS = :p_stat
+            update HBSTRANS set HTSNDSTS = :p_stat,
+                               HTSNDTS  = :w_timestmp
               where HTGUID = :r_guid;
 
           return;
