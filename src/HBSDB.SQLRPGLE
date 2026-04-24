@@ -154,7 +154,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
 
 25001  Dcl-DS $dsREC Qualified Dim(999) Inz;
           aguid     char(36);
-          pguid     char(36);
+26001     rpguid    char(36);
+26001     raguid    char(36);
           header    char(500);
           rcvstat   char(1);
           rcvts     char(26);
@@ -277,7 +278,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          rrna = 0;
 
 26001    SQLStatement = ' SELECT  HTGUID, ' +
-           'cast(' + tic + tic + ' as char(36)), ' +
+26001      'HTRQPGUID, '                                  +
+26001      'HTRQAGUID, '                                  +
            'cast(HTREQHDR as char(500)),'                 +
            'HTRCVSTS, '                                   +
            'cast(HTRCVTS as char(26)), '                  +
@@ -323,7 +325,7 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
                endif;
                rrna += 1;
                aguid   = $dsrec(index#).aguid;
-               pguid   = $dsrec(index#).pguid;
+26001          pguid   = $dsrec(index#).rpguid;
                header  = $dsrec(index#).header;
 26001          service = %trim($dsrec(index#).sname);
 26001          HostPgm = $dsrec(index#).pname;
@@ -855,14 +857,29 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
            if not(error);
            reset WhereStatement;
 
-          if fpguid <> *blanks;
-26001       WhereStatement = 'HTRQPGUID = ' + tic +
-            fpguid + tic;
+          if faguid <> *blanks;
+26001       WhereStatement = 'HTGUID = ' + tic +
+            faguid + tic;
           endif;
 
-          if faguid <> *blanks;
-26001         WhereStatement = 'HTGUID = ' + tic +
-              faguid + tic;
+          if fraguid <> *blanks;
+26001       if WhereStatement = *blanks;
+26001         WhereStatement = 'HTRQAGUID = ' + tic +
+                fraguid + tic;
+26001       else;
+26001         WhereStatement += ' AND HTRQAGUID = ' + tic +
+                fraguid + tic;
+26001       endif;
+          endif;
+
+          if frpguid <> *blanks;
+26001       if WhereStatement = *blanks;
+26001         WhereStatement = 'HTRQPGUID = ' + tic +
+                frpguid + tic;
+26001       else;
+26001         WhereStatement += ' AND HTRQPGUID = ' + tic +
+                frpguid + tic;
+26001       endif;
           endif;
 
           if frstat <> *blanks;
