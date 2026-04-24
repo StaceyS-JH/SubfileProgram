@@ -92,10 +92,10 @@
      A                                      DSPATR(HI)
      A                                  2 63'Inbound'
      A                                      DSPATR(HI)
-     A                                  3 17'RH=Recv Header'
+     A                                  3 17'V=View Detail'
      A                                      COLOR(BLU)
-     A                                  4 17'SH=Send Header'
-     A                                      COLOR(BLU)
+     A*                                  4 17'SH=Send Header'
+     A*                                     COLOR(BLU)
      A                                  4 33'SR=Send Resp'
      A                                      COLOR(BLU)
      A                                  7 92'Scs'
