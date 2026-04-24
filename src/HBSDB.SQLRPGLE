@@ -856,48 +856,48 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
            reset WhereStatement;
 
           if fpguid <> *blanks;
-            WhereStatement = 'r.HRPARNTID = ' + tic +
+26001       WhereStatement = 'HTRQPGUID = ' + tic +
             fpguid + tic;
           endif;
 
           if faguid <> *blanks;
-              WhereStatement = 'r.HRACTVTID = ' + tic +
+26001         WhereStatement = 'HTGUID = ' + tic +
               faguid + tic;
           endif;
 
           if frstat <> *blanks;
-              WhereStatement = 'r.hrstat = ' + tic +
+26001         WhereStatement = 'HTRCVSTS = ' + tic +
               frstat + tic;
           endif;
           if fsstat <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 's.hsstat = ' + tic +
+26001         WhereStatement = 'HTSNDSTS = ' + tic +
               fsstat + tic;
             else;
-              WhereStatement += ' AND s.hsstat = ' + tic +
+26001         WhereStatement += ' AND HTSNDSTS = ' + tic +
               fsstat + tic;
             endif;
           endif;
           if fservice <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 'cast(r.HRRCVHDR as char(500)) like '
+26001         WhereStatement = 'HTSNAME like '
                + tic + '%' +
                %trim(fservice) + '%' + tic;
             else;
-              WhereStatement += ' AND cast(r.HRRCVHDR as char(500)) like '
+26001         WhereStatement += ' AND HTSNAME like '
                + tic + '%' +
                %trim(fservice) + '%' + tic;
             endif;
           endif;
           if rdfr <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 'r.hrrowmnt >= ' + tic +
+26001         WhereStatement = 'HTRCVTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdfr:*usa):*ISO) +
                 '-' + %char(%time(rtfr:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-              WhereStatement += ' AND r.hrrowmnt >= ' + tic +
+26001         WhereStatement += ' AND HTRCVTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdfr:*usa):*ISO) +
                 '-' + %char(%time(rtfr:*HMS):*ISO) +
@@ -907,21 +907,21 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 
           if rdto <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 'r.hrrowmnt <= ' + tic +
+26001         WhereStatement = 'HTRCVTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdto:*usa):*ISO) +
                 '-' + %char(%time(rtto:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-              WhereStatement += ' AND r.hrrowmnt <= ' + tic +
+26001         WhereStatement += ' AND HTRCVTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdto:*usa):*ISO) +
                 '-' + %char(%time(rtto:*HMS):*ISO) +
                 '.000000')) + tic;
             endif;
           endif;
-       WhereStatement = %trim(WhereStatement) +
-         ' and r.hrrcvhdr not like ' + tic + '%SubsystemControl%' + tic;
+26001  WhereStatement = %trim(WhereStatement) +
+26001    ' and HTREQHDR not like ' + tic + '%SubsystemControl%' + tic;
 
           done = *on;
           endif;
