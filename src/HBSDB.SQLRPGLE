@@ -161,6 +161,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
           sndstat   char(1);
           sndts     char(26);
           jsnip     varchar(25);
+26001     sname     varchar(40);
+26001     pname     char(10);
        End-DS;
 
 25001  Dcl-DS $dsOutREC Qualified Dim(999) Inz;
@@ -281,7 +283,9 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
            'cast(HTRCVTS as char(26)), '                  +
            'HTSNDSTS, '                                   +
            'cast(HTSNDTS as char(26)), '                  +
-           'cast(' + tic + tic + ' as varchar(25)) '     +
+           'cast(' + tic + tic + ' as varchar(25)), '    +
+26001      'HTSNAME, '                                    +
+26001      'HTPNAME '                                     +
          'From hbstrans '                                +
          'where @W '                                     +
          'Order by '                                     +
@@ -294,8 +298,6 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          Exec SQL Declare hbsrecv_Csr Cursor for the_Csr;
 
          Exec SQL Open hbsrecv_Csr;
-
-         open hbsversn;
 
          DoU noMoreRows;
            Exec SQL
@@ -323,24 +325,8 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
                aguid   = $dsrec(index#).aguid;
                pguid   = $dsrec(index#).pguid;
                header  = $dsrec(index#).header;
-               pos1 = %scan('HTTP/': header: 7);
-               if pos1 > 0;
-                 pos2 = %scanr('/':%subst(header:1:pos1));
-                 if pos2 > 0;
-                   pos2 += 1;
-                   service = %subst(header:pos2:(pos1 - pos2));
-                   chain ('HBSVersion1.0': service) hbsversn;
-                   if %found(hbsversn);
-                     HostPgm = HostSrvc;
-                   endif;
-                 else;
-                   service = *blanks;
-                   HostPgm = *blanks;
-                 endif;
-               else;
-                 service = *blanks;
-                 HostPgm = *blanks;
-               endif;
+26001          service = %trim($dsrec(index#).sname);
+26001          HostPgm = $dsrec(index#).pname;
 
 24002          if service = 'NTQuery';
                  mysqlclobdata_data = '';
@@ -380,8 +366,6 @@ sas            if %subst(header:1:8) = 'INTERNAL';
            EndFor;
 25001    NoMoreRows = *on;
          EndDo;
-
-         close hbsversn;
 
          Exec Sql Close hbsrecv_Csr;
 
