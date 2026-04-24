@@ -140,17 +140,9 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
          dcl-s Direction char(1) inz(*blanks);
          dcl-s CmdString varchar(200) inz(*blanks);
 
-       Dcl-S blockSize Int(10) Inz(%Elem($dsHBSRECV));
+26001  Dcl-S blockSize Int(10) Inz(%Elem($dsREC));
        Dcl-S Index# Int(10);
        Dcl-S noMoreRows Ind;
-
-25001  Dcl-DS $dsHBSRECV Qualified Dim(999) Inz;
-          aguid    char(36);
-          pguid    char(36);
-          header   varchar(500);
-          rcvstat  char(1);
-          rcvts    char(26);
-       End-DS;
 
 25001  Dcl-DS $dsREC Qualified Dim(999) Inz;
           aguid     char(36);
