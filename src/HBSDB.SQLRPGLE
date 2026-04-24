@@ -401,6 +401,8 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          formatting = 'J';
 
          select;
+26001      when inFile = 'HBSREQ';
+             guidkey = 'HRGUID';
            when inFile = 'HBSRECV';
              guidkey = 'HRACTVTID';
            when inFile = 'HBSSEND';
@@ -925,8 +927,8 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                dow not(%eof);
                  // Subfile Options
                  select;
-                 when option2 = 'RD';
-                   ViewCLOB('HBSRECV': 'HRRCVDTA': AGuid);
+26001            when option2 = 'RD';
+                   ViewCLOB('HBSREQ': 'HRBODY': AGuid);
                  when option2 = 'RH';
                    ViewCLOB('HBSRECV': 'HRRCVHDR': AGuid);
                  when option2 = 'SD';
