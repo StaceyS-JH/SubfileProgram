@@ -224,7 +224,7 @@ end-pi;
   if sqlstate = '02000';
     outData.r_pguid = 'Not Available';
     outData.r_aguid = inGuid;
-    return 550041;
+    return 550014;
   endif;
 
   if CheckSQLstate(sqlstate) = 'C';
