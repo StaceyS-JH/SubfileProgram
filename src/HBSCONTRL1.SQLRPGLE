@@ -406,7 +406,7 @@ sas    dcl-ds dsBankParms qualified;
      D asp_spawn       s             10
      D rstime          s               z
      D retime          s               z
-23001D LastSchedRun     s              z   inz(*loval)
+23001D LastSchedRun    s               z   inz(*loval)
      D mcsc            s              9s 0
      D cmpms           s              9s 0 inz(500)
      D resulta         s             10a
