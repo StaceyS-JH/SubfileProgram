@@ -3,6 +3,7 @@
        //ctl-opt main(HBSCMEVT);
 sasn   ctl-opt bnddir('NOXDB');
 
+26001 //  04/24/26 #xxxxxxx  S Smith - Convert hbstools_Actvty calls to hbstools_CrtLog
 25001 //  02/21/25 #1182418 MCollins - Add "Key" key/value pair to msg
 24001 //  06/5/24  #1179375   V Everett - expand HBSSBSCTL
 23002 //  09/15/23 #1177741 S Smith - changes for CL calling program
@@ -176,14 +177,24 @@ sasx   dcl-s oclob varchar(32000);
            dow (forever);
              // Open Files
              if (OpenFiles() <> 0);
-               hbstools_Actvty(pPGUID:pAGUID:550021:
-                               'Error Opening HBMANT_T');
+26001  //       hbstools_Actvty(pPGUID:pAGUID:550021:
+26001  //                       'Error Opening HBMANT_T');
+26001          hbstools_CrtLog(pAGUID
+26001                      :'GUIDLOG':''
+26001                      :'550021':'Error Opening HBMANT_T'
+26001                      :Procname:psjobnm
+26001                      :%char(psjob#):'Y');
                leave;
              endif;
 
              If Format_Request() <> 0;        // got good request
-               hbstools_Actvty(pPGUID:pAGUID:550039:
-                               'Error building request');
+26001  //       hbstools_Actvty(pPGUID:pAGUID:550039:
+26001  //                       'Error building request');
+26001          hbstools_CrtLog(pAGUID
+26001                      :'GUIDLOG':''
+26001                      :'550039':'Error building request'
+26001                      :Procname:psjobnm
+26001                      :%char(psjob#):'Y');
 
              else;
 
