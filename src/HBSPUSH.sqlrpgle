@@ -7,6 +7,8 @@
        ctl-opt main(Main);
        //ctl-opt bnddir('HTTPAPI');
 
+26006 // 04/24/26 #xxxxxxx  S Smith - Recover ResendQ GUIDs on startup after abnormal end
+26004 // 04/24/26 #xxxxxxx  S Smith - Convert push from hbssend to hbstrans/hbsreq/hbresp
 26003 // 03/12/26 #1185227 M Collins - Add port to header when
 26003 //                               encryption is off
 26002 // 03/02/25 #1184581 S Smith - Resend logic changes
@@ -53,7 +55,7 @@ sas    //
          S_Pguid char(36) inz('');
          S_Aguid char(36) inz('');
          S_HostService char(10) inz('');
-         S_Hdr varchar(1000) inz('');
+26004    S_Hdr varchar(1024) inz('');
          S_Attempts int(10) inz(0);
          S_Data sqltype(CLOB:2000000) inz('');
        end-ds;
@@ -343,6 +345,17 @@ sas    //Check for return *off to see if an error occured during set up
        ResendsExist = Yes;
 
 26002  CheckResend = No;
+
+26006  // On startup, check if ResendQ has stranded GUIDs from a prior abnormal end.
+26006  // If so, set CheckResend so they are processed once a connection is established.
+26006  exec sql
+26006    SELECT current_messages into :ResendCount
+26006      FROM QSYS2.DATA_QUEUE_INFO
+26006      WHERE DATA_QUEUE_LIBRARY = :w_dtaqlib
+26006      AND DATA_QUEUE_NAME = :ResendQ;
+26006  if ResendCount > 0;
+26006    CheckResend = Yes;
+26006  endif;
 
        Dow (PushIsActive);
 
