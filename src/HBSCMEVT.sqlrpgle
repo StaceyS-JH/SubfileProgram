@@ -3,6 +3,7 @@
        //ctl-opt main(HBSCMEVT);
 sasn   ctl-opt bnddir('NOXDB');
 
+26002 //  04/24/26 #xxxxxxx  S Smith - Convert insert from hbstran to hbstrans/hbsreq
 26001 //  04/24/26 #xxxxxxx  S Smith - Convert hbstools_Actvty calls to hbstools_CrtLog
 25001 //  02/21/25 #1182418 MCollins - Add "Key" key/value pair to msg
 24001 //  06/5/24  #1179375   V Everett - expand HBSSBSCTL
@@ -198,15 +199,24 @@ sasx   dcl-s oclob varchar(32000);
 
              else;
 
-               exec sql
-                 insert into hbstran
-                   (htpguid, htaguid, htsndsts, htpname, httype, htsndhdr)
-                 values
-                   (:inAGuid, :inAGuid, 'N', 'HBSCMEVT', 'OUTBOUND',
-                    '/Jha.Event/api/v1/maintenance');
+26002  //       exec sql
+26002  //         insert into hbstran
+26002  //           (htpguid, htaguid, htsndsts, htpname, httype, htsndhdr)
+26002  //         values
+26002  //           (:inAGuid, :inAGuid, 'N', 'HBSCMEVT', 'OUTBOUND',
+26002  //            '/Jha.Event/api/v1/maintenance');
+26002          exec sql
+26002            insert into hbstrans
+26002              (htrqpguid, htguid, htsndsts, htpname, httype, htreqhdr)
+26002            values
+26002              (:inAGuid, :inAGuid, 'N', 'HBSCMEVT', 'OUT',
+26002               '/Jha.Event/api/v1/maintenance');
 
-               hbstools_WriteSendData(hsaguid
-                                :JsonString);
+26002  //       hbstools_WriteSendData(hsaguid
+26002  //                        :JsonString);
+26002          exec sql
+26002            insert into hbsreq (hrguid, hrbody)
+26002              values (:inAGuid, :JsonString);
 
        //        exec sql
        //          insert into hbssndd (hsaguid, hsseq, hsdata)
