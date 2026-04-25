@@ -7,6 +7,7 @@
        ctl-opt main(Main);
        //ctl-opt bnddir('HTTPAPI');
 
+26007 // 04/24/26 #xxxxxxx  S Smith - Convert hbstools_Actvty calls to hbstools_CrtLog
 26006 // 04/24/26 #xxxxxxx  S Smith - Recover ResendQ GUIDs on startup after abnormal end
 26004 // 04/24/26 #xxxxxxx  S Smith - Convert push from hbssend to hbstrans/hbsreq/hbresp
 26003 // 03/12/26 #1185227 M Collins - Add port to header when
@@ -451,10 +452,18 @@ kkg    //  Control sending request to check control que
          endif;
 
          // Guid received
-         hbstools_Actvty(S_Pguid:S_Aguid:550041);
+26007    hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'550041':''
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
 
          if S_HostService = 'PushCtrl';
-           hbstools_Actvty(S_Pguid:S_Aguid:560000:'Push Control detected');
+26007      hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Push Control detected'
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
            PushControl();
            iter;
          endif;
@@ -541,9 +550,13 @@ sas    //  Do I need JsonMsg or can I just use SendStr?
              Hdr_ContentLength = %trim(http_header('Content-Length'));
              Hdr_Date = %trim(http_header('Date'));
 
-             hbstools_Actvty(S_Pguid:S_Aguid:560000: 'Response - Connection: ' +
-                  Hdr_Connection + ', Content Length: ' +
-                  Hdr_ContentLength);
+26007        hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Response - Connection: ' +
+26007                   Hdr_Connection + ', Content Length: ' +
+26007                   Hdr_ContentLength
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
 
              if Hdr_Connection = 'close';
                ConnectionIsActive = No;
@@ -562,8 +575,12 @@ sas    //  Do I need JsonMsg or can I just use SendStr?
              if rc <= 0 or SendResultLen = 0;
 26002  //        SendAttempts += 1;
                // delay
-               hbstools_Actvty(S_Pguid:S_Aguid:560000: 'Delaying ' +
-                  %char(myServer.RetryDelay) + ' seconds');
+26007          hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Delaying ' +
+26007                   %char(myServer.RetryDelay) + ' seconds'
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
                MyDelay(myServer.RetryDelay);
 
                reset ConEndTime;
@@ -616,8 +633,9 @@ sas                  // Make this a function call?
                      if HS_SendRespService <> '*SUCCESS';
                        rcv_datq = 'HBS' + %char(%editc(jhbnkn:'X')) + 'RQ01';
                        rcv_qdata = S_Aguid + 'SR';
-                       hbstools_Actvty(S_Pguid:S_Aguid:560000:
-                         %trim(rcv_qdata) + ' sent to ' + %trim(rcv_datq));
+26007                  hbstools_CrtLog(S_Aguid:'GUIDLOG':'':'560000':
+26007                       %trim(rcv_qdata) + ' sent to ' + %trim(rcv_datq)
+26007                       :Procname:psjobnm:%char(psjob#):'Y');
                        hbstools_SendDtq(rcv_datq: w_dtaqlib
                              :%len(%trim(rcv_qdata)):rcv_qdata);
                      endif;
@@ -924,35 +942,59 @@ sas    //560000    Info    GUID Log Entry:
           ShortResponse =  %scanrpl('"':Quote:%subst(w_respnse_data:1:100));
           Select;
             when p_stat = 'Y';
-              hbstools_Actvty(p_pguid:p_aguid:550044:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550044':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //          :%subst(w_respnse_data:1:100));
        // 550044    Info    GUID successfully Pushed to server
 
             when p_stat = 'E';
-              hbstools_Actvty(p_pguid:p_aguid:550045:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550045':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //         :%subst(w_respnse_data:1:100));
        // 550045    Error   Push process errored during send of GUID
 
 sas         when p_stat = 'H';
 sas    // might need a new log description
-              hbstools_Actvty(p_pguid:p_aguid:550045:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550045':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
 26001         HttpErrorsOccuring = Yes;
        //         :%subst(w_respnse_data:1:100));
        // 550045    Error   Push process errored during send of GUID
 
             when p_stat = 'R';
 sas    // this would be used for connection problems
-              hbstools_Actvty(p_pguid:p_aguid:550046:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550046':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //         :%subst(w_respnse_data:1:100));
        // 550046    Error   No response from server set to resend
 
             when p_stat = 'S';
-              hbstools_Actvty(p_pguid:p_aguid:550051:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550051':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //          :%subst(w_respnse_data:1:100));
        // 550051    Info    GUID request sent to server
 
             when p_stat = 'U';
-              hbstools_Actvty(p_pguid:p_aguid:550053:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550053':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //         :%subst(w_respnse_data:1:100));
        // 550053    Error   GUID was Pushed to server but Success was false
 
@@ -960,18 +1002,30 @@ sas         when p_stat = 'N';
 sas    // might need a new log description
 sas    // this would be used for connection problems
 sas    // not sure if I will need this
-              hbstools_Actvty(p_pguid:p_aguid:550056:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550056':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //         :%subst(w_respnse_data:1:100));
        // Info    GUID reset after being loaded from resend
 
 26002       when p_stat = '4';
 26002  // might need a new log description
-26002         hbstools_Actvty(p_pguid:p_aguid:550045:ShortResponse);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550045':ShortResponse
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
 26002  //       HttpErrorsOccuring = Yes;
 26002  // 550045    Error   Push process errored during send of GUID
 
             other;
-              hbstools_Actvty(p_pguid:p_aguid:550047);
+26007         hbstools_CrtLog(p_aguid
+26007                      :'GUIDLOG':''
+26007                      :'550047':''
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
        //       :%subst(w_respnse_data:1:100));
        // 550047    Info    Push process encountered unknown status update
 
@@ -1135,8 +1189,12 @@ sas    // not sure if I will need this
          endfor;
 
          if dsHbsPars.DebugHttp;
-           hbstools_Actvty(S_Pguid:S_Aguid:560000:
-             'Debugging being written to ' + dsHbsPars.DebugFilePath);
+26007      hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Debugging being written to ' +
+26007                   dsHbsPars.DebugFilePath
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
            http_debug(*on: dsHbsPars.DebugFilePath);
            DebugActive = Yes;
          else;
@@ -1260,10 +1318,11 @@ sas3  //  This should only happen after a connection has been established.
 
               clear rs_qdata;
 
-              hbstools_Actvty(ReSendIDs(FetchIndex).rspguid
-                             :ReSendIDs(FetchIndex).rsaguid
-26001  //                      :550054);
-26001                        :550050);
+26007         hbstools_CrtLog(ReSendIDs(FetchIndex).rsaguid
+26007                      :'GUIDLOG':''
+26007                      :'550050':''
+26007                      :Procname:psjobnm
+26007                      :%char(psjob#):'Y');
 
               rs_qdata = ReSendIDs(FetchIndex).rsaguid;
 
@@ -1502,9 +1561,12 @@ sas    // I need an inner counter for MultiIP servers
            if comm = *null;
        //      hbstools_Actvty(S_Pguid:S_Aguid:560000:
        //        myServer.Name + ' connection failure');
-             hbstools_Actvty(S_Pguid:S_Aguid:560000:
-               'Connection failure ' + myIP.Name + ' with ' +
-               myIP.URL );
+26007        hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Connection failure ' + myIP.Name + ' with ' +
+26007                   myIP.URL
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
 
        //      if myServer.MultiIP;
        //        NextServerIP(pServerType);
@@ -1556,9 +1618,12 @@ sas    //          myServer.Name + ' selected');
 
        // Connection is established
        // ConnectionActive = Y;
-         hbstools_Actvty(S_Pguid:S_Aguid:560000:
-         'Connected to ' + myIP.Name + ' with ' +
-         myIP.URL );
+26007    hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':'Connected to ' + myIP.Name + ' with ' +
+26007                   myIP.URL
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
 
 sas      //  Connection End Time
          ConEndTime = %timestamp() + %seconds(myServer.PushITO);
@@ -1648,8 +1713,11 @@ sas      //  Connection End Time
 
          myIp = Server_Ips(idx2);
 
-         hbstools_Actvty(S_Pguid:S_Aguid:560000:
-         myIp.Name + ' selected');
+26007    hbstools_CrtLog(S_Aguid
+26007               :'GUIDLOG':''
+26007               :'560000':myIp.Name + ' selected'
+26007               :Procname:psjobnm
+26007               :%char(psjob#):'Y');
 
        ////  // Determine what to do with the CurIPNum value
        ////  // Is this fall back or round robin.
