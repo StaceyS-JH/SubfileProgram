@@ -795,14 +795,16 @@ sasx     reset dsHBSSend;
 sasx     S_Data_len = 0;
 
           // Locate GUID and make sure status is new or resend
-         Exec SQL
-           Select Hsparntid, Hsactvtid, hshstsrv,
-                 cast(Hssndhdr as char(1000)),
-                 Hsattmpt#,
-                 Hssnddta
-            into :dsHBSSend
-            from HBSSEND
-            where hsactvtid = :pGuid;
+26004      exec sql
+26004        Select t.HTRQPGUID, t.HTGUID, t.HTPNAME,
+26004               t.HTREQHDR,
+26004               t.HTATTEMPTS,
+26004               r.HRBODY
+26004          into :dsHBSSend
+26004          from HBSTRANS t
+26004          join HBSREQ r on r.HRGUID = t.HTGUID
+26004          where t.HTGUID = :pGuid
+26004            and t.HTTYPE = 'OUT';
 
           if sqlstate = '02000';
             return *off;
@@ -851,11 +853,23 @@ sasx     S_Data_len = 0;
             w_respnse_len=%len(%trim(p_respnse));
           ENDIF;
 
-          Exec SQL
-            update HBSSEND set HSSTAT = :p_stat,
-                               HSATTMPT# = :SendAttempts,
-                               HSRSPNSE = :w_respnse
-              where hsactvtid = :p_aguid;
+26004      exec sql
+26004        update HBSTRANS
+26004          set HTSNDSTS = :p_stat,
+26004              HTATTEMPTS = :SendAttempts
+26004          where HTGUID = :p_aguid;
+26004      if %parms >= 4 and
+26004         (p_stat = 'Y' or p_stat = 'U' or
+26004          p_stat = 'H' or p_stat = '4');
+26004        exec sql
+26004          update HBRESP set HSBODY = :w_respnse
+26004            where HSGUID = :p_aguid;
+26004        if sqlstate = '02000';
+26004          exec sql
+26004            insert into HBRESP (HSGUID, HSBODY)
+26004              values(:p_aguid, :w_respnse);
+26004        endif;
+26004      endif;
 sas    // result2
 sas    // result
 sas    //3406
@@ -1197,12 +1211,13 @@ sas3  //  This should only happen after a connection has been established.
 26001  //        from HBSSEND
 26001  //        where Hsstat = 'R'
 26001  //        for fetch only;
-26001     Exec SQL
-26001       Declare ReSendCSR cursor for
-26001       Select Hsparntid, Hsactvtid
-26001          from HBSSEND
-26001          where Hsstat = :p_Type
-26001          for fetch only;
+26004     exec sql
+26004       Declare ReSendCSR cursor for
+26004       Select HTRQPGUID, HTGUID
+26004          from HBSTRANS
+26004          where HTSNDSTS = :p_Type
+26004            and HTTYPE = 'OUT'
+26004          for fetch only;
 
           Exec SQL
             Open ReSendCSR;
