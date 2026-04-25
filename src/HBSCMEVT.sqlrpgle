@@ -3,6 +3,7 @@
        //ctl-opt main(HBSCMEVT);
 sasn   ctl-opt bnddir('NOXDB');
 
+26003 //  04/24/26 #xxxxxxx  S Smith - Expand JsonString2 to varchar(2000000) for large payloads
 26002 //  04/24/26 #xxxxxxx  S Smith - Convert insert from hbstran to hbstrans/hbsreq
 26001 //  04/24/26 #xxxxxxx  S Smith - Convert hbstools_Actvty calls to hbstools_CrtLog
 25001 //  02/21/25 #1182418 MCollins - Add "Key" key/value pair to msg
@@ -42,17 +43,17 @@ sasn   /include qcpysrc,noxdb
 
        dcl-ds dsMaintEvent qualified;
          ApplicationNameType int(10);
-         ClientIpAddress varchar(25);
+         ClientIPAddress varchar(25);
          InstitutionId varchar(25);
        //  RequestType varchar(25);
          ChangedBy varchar(25);
-         ChangeDate varchar(25);
+         ChangedDate varchar(25);
          EntityType varchar(25);
          EntityId varchar(25);
          Maintenance varchar(25);
          Operation varchar(25);
          Program varchar(25);
-         Workstation varchar(25);
+         WorkStation varchar(25);
 
          num_ChangedInformationCollection int(10);
          dcl-ds ChangedInformationCollection dim(200);
@@ -124,7 +125,8 @@ sas    //  jclob varchar(2000000);
        dcl-s MntRecs int(10);
        dcl-s AcctRecs int(10);
 sasn   dcl-s JsonString varchar(32000);
-sasn2  dcl-s JsonString2 varchar(32000);
+26003 //sasn2  dcl-s JsonString2 varchar(32000);
+sasn2  dcl-s JsonString2 varchar(2000000);
        dcl-s PsdsString varchar(1000) inz('');
 sasx   dcl-s oclob varchar(32000);
 
@@ -183,8 +185,10 @@ sasx   dcl-s oclob varchar(32000);
 26001          hbstools_CrtLog(pAGUID
 26001                      :'GUIDLOG':''
 26001                      :'550021':'Error Opening HBMANT_T'
-26001                      :Procname:psjobnm
-26001                      :%char(psjob#):'Y');
+26001                      :mypsds.Procname
+26001                      :mypsds.JobName
+26001                      :%char(mypsds.JobNbr)
+26001                      :'Y');
                leave;
              endif;
 
@@ -194,8 +198,10 @@ sasx   dcl-s oclob varchar(32000);
 26001          hbstools_CrtLog(pAGUID
 26001                      :'GUIDLOG':''
 26001                      :'550039':'Error building request'
-26001                      :Procname:psjobnm
-26001                      :%char(psjob#):'Y');
+26001                      :mypsds.Procname
+                           :mypsds.JobName
+26001                      :%char(mypsds.JobNbr)
+                           :'Y');
 
              else;
 
@@ -387,30 +393,32 @@ sasn2     dcl-s myPointer pointer;
 sasn2
 sasn2  //     ------------------------------------------
 sasn2       dsMaintEvent.ApplicationNameType = 29;
-sasn2       dsMaintEvent.ClientIpAddress = %trim(d_LocalIP);
+sasn2       dsMaintEvent.ClientIPAddress = %trim(d_LocalIP);
 sasn2       dsMaintEvent.InstitutionId = %trim(d_FINum);
 sasn2  //     dsMaintEvent.RequestType = 1;
 sasn2
 sasn2       dsMaintEvent.ChangedBy = %trim(dsMnt(wIndx).jhmuid);
-sasn2       dsMaintEvent.ChangeDate = %trim(%char(%timestamp()));
+sasn2       dsMaintEvent.ChangedDate = %trim(%char(%timestamp()));
 sasn2       dsMaintEvent.EntityType = 'CM ID Change';
 sasn2       dsMaintEvent.EntityId = %trim(%editc(dsMnt(wIndx).jhmact:'Z'));
 sasn2       dsMaintEvent.Maintenance = 'NT/Banno Host';
 sasn2       dsMaintEvent.Operation = %trim(dsMnt(wIndx).jhcrud);
 sasn2       dsMaintEvent.Program = %trim(dsMnt(wIndx).jhmpgm);
-sasn2       dsMaintEvent.Workstation = %trim(dsMnt(wIndx).jhmwid));
+sasn2       dsMaintEvent.WorkStation = %trim(dsMnt(wIndx).jhmwid);
 sasn2
 sasn2       dsMaintEvent.ActivityTracking.ActivityId = %trim(inAGUID);
 sasn2       dsMaintEvent.ActivityTracking.ParentActivityId = %trim(inAGUID);
 sasn2
 sasn2       dsMaintEvent.AuthenticationUser.InternalId =
 sasn2         %trim(%editc(dsMnt(wIndx).jhmact:'Z'));
-sasn2       dsMaintEvent.AuthenticationUser.InternalSecondaryId = '';
+sasn2       dsMaintEvent.AuthenticationUser.InternalSecondaryId = 
+              :%trim(dsMnt(wIndx).jhcusr));
 sasn2       dsMaintEvent.AuthenticationUser.UserType = 2;
 sasn2
 sasn2       dsMaintEvent.EndUser.InternalId =
 sasn2         %trim(%editc(dsMnt(wIndx).jhmact:'Z'));
-sasn2       dsMaintEvent.EndUser.InternalSecondaryId = '';
+sasn2       dsMaintEvent.EndUser.InternalSecondaryId = 
+              :%trim(dsMnt(wIndx).jhcusr)); 
 sasn2       dsMaintEvent.EndUser.UserType = 2;
 sasn2
 sasn2       dsMaintEvent.ProductInformation.ProductName = 'NT/Banno';
