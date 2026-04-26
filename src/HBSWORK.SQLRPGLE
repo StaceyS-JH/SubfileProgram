@@ -126,7 +126,7 @@ end-pi;
   exec sql
     select r.HSGUID, r.HSGUID, t.HTPNAME, r.HSBODY
       into :wSndRes
-      from HBRESP r
+      from HBSRESD r
       join HBSTRANS t on t.HTGUID = r.HSGUID
       where r.HSGUID = :inGuid;
 
@@ -216,9 +216,9 @@ end-pi;
            t.HTREQHDR,
            r.HRBODY
       into :wRecv
-      from HBSREQ r
+      from HBSREQD r
       join HBSTRANS t on t.HTGUID = r.HRGUID
-      where t.HTRCVSTS = 'N'
+      where t.HTREQSTS = 'N'
         and r.HRGUID = :inGuid;
 
   if sqlstate = '02000';
@@ -460,9 +460,9 @@ end-pi;
            t.HTREQHDR,
            r.HRBODY
       into :wRecv
-      from HBSREQ r
+      from HBSREQD r
       join HBSTRANS t on t.HTGUID = r.HRGUID
-      where t.HTRCVSTS = 'N'
+      where t.HTREQSTS = 'N'
         and r.HRGUID = :inGuid;
 
   if sqlstate = '02000';

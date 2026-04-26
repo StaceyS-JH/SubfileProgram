@@ -762,7 +762,7 @@ M03    w_dtaqlib = d_BankLib;
           Exec SQL
                Select HSGUID, HSBODY
                into :ReadDta
-               from HBRESP
+               from HBSRESD
                where HSGUID = :w_guid;
 
           if sqlstate = '02000';
@@ -792,8 +792,8 @@ M03    w_dtaqlib = d_BankLib;
           w_stat = p_stat;
 
           Exec SQL
-            update HBSTRANS set HTSNDSTS = :p_stat,
-                               HTSNDTS  = :w_timestmp
+            update HBSTRANS set HTRESSTS = :p_stat,
+                               HTRESTS  = :w_timestmp
               where HTGUID = :r_guid;
 
           return;
@@ -815,8 +815,8 @@ M03    w_dtaqlib = d_BankLib;
           w_stat = p_stat;
 
           Exec SQL
-            update HBSTRANS set HTRCVSTS = :p_stat,
-                               HTRCVTS  = :w_timestmp
+            update HBSTRANS set HTREQSTS = :p_stat,
+                               HTREQTS  = :w_timestmp
               where HTGUID = :w_guid2;
 
           return;
@@ -1027,7 +1027,7 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
            Exec SQL
              insert into HBSTRANS
               (HTGUID, HTRQPGUID, HTRQAGUID,
-               HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+               HTTYPE, HTREQSTS, HTRESSTS, HTREQHDR)
              values
               (:w_guid2, :w_pguid, :w_guid,
                'IN', :w_stat, 'N', :prmhead);
@@ -1039,15 +1039,15 @@ Kg03         PrmHead = %subst(rcvbuff:w_starth:jsonstrt - 1);
              return *off;
            endif;
 
-           // Write request body to HBSREQ
+           // Write request body to HBSREQD
            Exec SQL
-             insert into HBSREQ
+             insert into HBSREQD
               (HRGUID, HRBODY)
                values (:w_guid2, :prmjson);
 
            if sqlstate <> '00000';
              hbstools_CommLog(660005:
-               'HBSREQ insert failed SQLSTATE=' + sqlstate + 
+               'HBSREQD insert failed SQLSTATE=' + sqlstate + 
                 ' GUID=' + w_guid2);
              return *off;
            endif;
@@ -1413,13 +1413,13 @@ M03         w_cmd = 'CRTDTAQ DTAQ(' + %trim(w_DtaqLib) + '/' + %trim(p_dtaq) +
            Exec SQL
              insert into HBSTRANS
               (HTGUID, HTRQPGUID, HTRQAGUID,
-               HTTYPE, HTRCVSTS, HTSNDSTS, HTREQHDR)
+               HTTYPE, HTREQSTS, HTRESSTS, HTREQHDR)
              values
               (:w_guid2, :w_guid, :w_guid,
                'IN', :w_stat, 'N', :prmhead);
 
            Exec SQL
-             insert into HBSREQ
+             insert into HBSREQD
               (HRGUID, HRBODY)
                values (:w_guid2, :prmjson);
 

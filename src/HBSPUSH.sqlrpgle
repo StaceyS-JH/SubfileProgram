@@ -833,7 +833,7 @@ sasx     S_Data_len = 0;
 26004               r.HRBODY
 26004          into :dsHBSSend
 26004          from HBSTRANS t
-26004          join HBSREQ r on r.HRGUID = t.HTGUID
+26004          join HBSREQD r on r.HRGUID = t.HTGUID
 26004          where t.HTGUID = :pGuid
 26004            and t.HTTYPE = 'OUT';
 
@@ -886,18 +886,18 @@ sasx     S_Data_len = 0;
 
 26004      exec sql
 26004        update HBSTRANS
-26004          set HTSNDSTS = :p_stat,
+26004          set HTRESSTS = :p_stat,
 26004              HTATTEMPTS = :SendAttempts
 26004          where HTGUID = :p_aguid;
 26004      if %parms >= 4 and
 26004         (p_stat = 'Y' or p_stat = 'U' or
 26004          p_stat = 'H' or p_stat = '4');
 26004        exec sql
-26004          update HBRESP set HSBODY = :w_respnse
+26004          update HBSRESD set HSBODY = :w_respnse
 26004            where HSGUID = :p_aguid;
 26004        if sqlstate = '02000';
 26004          exec sql
-26004            insert into HBRESP (HSGUID, HSBODY)
+26004            insert into HBSRESD (HSGUID, HSBODY)
 26004              values(:p_aguid, :w_respnse);
 26004        endif;
 26004      endif;
@@ -1286,7 +1286,7 @@ sas3  //  This should only happen after a connection has been established.
 26004       Declare ReSendCSR cursor for
 26004       Select HTRQPGUID, HTGUID
 26004          from HBSTRANS
-26004          where HTSNDSTS = :p_Type
+26004          where HTRESSTS = :p_Type
 26004            and HTTYPE = 'OUT'
 26004          for fetch only;
 

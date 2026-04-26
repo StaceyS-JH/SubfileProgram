@@ -213,7 +213,7 @@ sasx   dcl-s oclob varchar(32000);
 26002  //            '/Jha.Event/api/v1/maintenance');
 26002          exec sql
 26002            insert into hbstrans
-26002              (htrqpguid, htguid, htsndsts, htpname, httype, htreqhdr)
+26002              (htrqpguid, htguid, htressts, htpname, httype, htreqhdr)
 26002            values
 26002              (:inAGuid, :inAGuid, 'N', 'HBSCMEVT', 'OUT',
 26002               '/Jha.Event/api/v1/maintenance');
@@ -221,7 +221,7 @@ sasx   dcl-s oclob varchar(32000);
 26002  //       hbstools_WriteSendData(hsaguid
 26002  //                        :JsonString);
 26002          exec sql
-26002            insert into hbsreq (hrguid, hrbody)
+26002            insert into hbsreqd (hrguid, hrbody)
 26002              values (:inAGuid, :JsonString);
 
        //        exec sql
@@ -412,13 +412,13 @@ sasn2
 sasn2       dsMaintEvent.AuthenticationUser.InternalId =
 sasn2         %trim(%editc(dsMnt(wIndx).jhmact:'Z'));
 sasn2       dsMaintEvent.AuthenticationUser.InternalSecondaryId = 
-              :%trim(dsMnt(wIndx).jhcusr));
+              %trim(dsMnt(wIndx).jhcusr);
 sasn2       dsMaintEvent.AuthenticationUser.UserType = 2;
 sasn2
 sasn2       dsMaintEvent.EndUser.InternalId =
 sasn2         %trim(%editc(dsMnt(wIndx).jhmact:'Z'));
 sasn2       dsMaintEvent.EndUser.InternalSecondaryId = 
-              :%trim(dsMnt(wIndx).jhcusr)); 
+              %trim(dsMnt(wIndx).jhcusr); 
 sasn2       dsMaintEvent.EndUser.UserType = 2;
 sasn2
 sasn2       dsMaintEvent.ProductInformation.ProductName = 'NT/Banno';

@@ -738,7 +738,7 @@ dcl-ds wReqData likeds(RecvDta) based(ReqCtx.RecvPtr);
 w_stat = p_stat;
 
 exec sql
-    update HBSTRANS set HTSNDSTS = :p_stat
+    update HBSTRANS set HTRESSTS = :p_stat
     where HTGUID = :wReqData.r_pguid;
 
 if sqlstate <> '00000';
@@ -850,8 +850,8 @@ exec sql
     update HBSTRANS
     set HTSNAME   = :wReqCtx.HostService,
         HTPNAME   = :wReqCtx.HostProgram,
-        HTRCVSTS  = 'Y',
-        HTSNDSTS  = :pStatus
+        HTREQSTS  = 'Y',
+        HTRESSTS  = :pStatus
     where HTGUID = :wReqData.r_pguid;
 
 if sqlstate <> '00000';
@@ -931,10 +931,10 @@ endif;
 
 // Remove any prior response for this GUID (handles retry after CEEFRST / partial failure)
 exec sql
-    delete from HBRESP where HSGUID = :wReqData.r_pguid;
+    delete from HBSRESD where HSGUID = :wReqData.r_pguid;
 
 exec sql
-    insert into HBRESP (HSGUID, HSBODY)
+    insert into HBSRESD (HSGUID, HSBODY)
         values (:wReqData.r_pguid, :SqlJSON);
 
 if SQLstate = '00000';
@@ -943,7 +943,7 @@ if SQLstate = '00000';
         update HBSTRANS
            set HTRESHDR   = :wHeadr,
                HTATTEMPTS = :pAttempt,
-               HTSNDTS    = CURRENT_TIMESTAMP
+               HTRESTS    = CURRENT_TIMESTAMP
          where HTGUID = :wReqData.r_pguid;
 
     // Do not write to send data queue if running test

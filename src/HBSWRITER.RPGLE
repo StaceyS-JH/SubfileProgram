@@ -178,7 +178,7 @@ w_body_len  = p_msg.lm_BodyLen;
 w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
 
 exec sql
-  insert into HBSREQ (HRGUID, HRBODY)
+  insert into HBSREQD (HRGUID, HRBODY)
   values (:p_msg.lm_Guid, :w_body);
 
 if sqlstate <> '00000';
@@ -215,7 +215,7 @@ w_body_len  = p_msg.lm_BodyLen;
 w_body_data = %subst(w_bodyRaw: 1: p_msg.lm_BodyLen);
 
 exec sql
-  insert into HBRESP (HSGUID, HSBODY)
+  insert into HBSRESD (HSGUID, HSBODY)
   values (:p_msg.lm_Guid, :w_body);
 
 if sqlstate <> '00000';

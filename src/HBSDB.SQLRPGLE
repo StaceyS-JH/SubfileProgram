@@ -21,7 +21,7 @@
                                          sfile(sflb: rrnb)
                                          sfile(sflc: rrnc)
                                          sfile(sfld: rrnd);
-    //    dcl-f hbsversn keyed usage(*input) usropn;
+       //    dcl-f hbsversn keyed usage(*input) usropn;
 
        Dcl-Pr EntryParm ExtPgm('HBSDB');
        End-Pr;
@@ -275,18 +275,18 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
 26001      'HTRQPGUID, '                                  +
 26001      'HTRQAGUID, '                                  +
            'cast(HTREQHDR as char(500)),'                 +
-           'HTRCVSTS, '                                   +
-           'cast(HTRCVTS as char(26)), '                  +
-           'HTSNDSTS, '                                   +
-           'cast(HTSNDTS as char(26)), '                  +
+           'HTREQSTS, '                                   +
+           'cast(HTREQTS as char(26)), '                  +
+           'HTRESSTS, '                                  +
+           'cast(HTRESTS as char(26)), '                 +
            'cast(' + tic + tic + ' as varchar(25)), '    +
 26001      'HTSNAME, '                                    +
 26001      'HTPNAME '                                     +
 26001    'From hbstrans '                                +
-26001    'where HTTYPE = ' + tic + 'IN' + tic +         +
+26001    'where HTTYPE = ' + tic + 'IN' + tic +
 26001    ' and @W '                                      +
          'Order by '                                     +
-         '  HTRCVTS desc '                               +
+         '  HTREQTS desc '                               +
          'For Read Only';
 
          SQLStatement = %scanrpl('@W':WhereStatement:SQLStatement);
@@ -331,7 +331,7 @@ sas5      ResetReq     Ind Pos(13) Inz(*Off);
 
 26001            exec sql
 26001              select HRBODY into :mysqlclobdata
-26001                from HBSREQ
+26001                from HBSREQD
 26001                where HRGUID = :aguid;
 
                  myclobdata = %trim(mysqlclobdata_data);
@@ -408,11 +408,11 @@ sas1     dcl-s ClobSQLData sqltype(CLOB: 2000000);
          formatting = 'J';
 
          select;
-26001      when inFile = 'HBSREQ';
+26001      when inFile = 'HBSREQD';
              guidkey = 'HRGUID';
 26001      when inFile = 'HBSTRANS';
              guidkey = 'HTGUID';
-26001      when inFile = 'HBRESP';
+26001      when inFile = 'HBSRESD';
              guidkey = 'HSGUID';
         //    when inFile = 'HBSRECV';
         //      guidkey = 'HRACTVTID';
@@ -587,17 +587,23 @@ sas1     ClobData = %trim(ClobSqlData_data);
          gInd.SflD_Empty = *off;
          crrnd = 0;
          rrnd = 0;
+26001    blockSize = %Elem($dsOutREC);
+26001    noMoreRows = *off;
 
-         SQLStatement = 'SELECT s.hsactvtid, s.hsparntid, '        +
-           's.hsattmpt#, s.hsstat, s.hshstsrv,  '                  +
-           'cast(s.hsrspnse as char(500)), '                       +
-           'cast(s.hsrowmnt as char(26)),  '                       +
-           'coalesce (hstsrvc, ' + tic + 'EXTERNAL' + tic +') , '  +
-           'cast(s.hssndhdr as char(100)) '                         +
-         'From hbssend s left join hbhsts on s.hshstsrv = hstsrvc ' +
-         'where @W '                                               +
+26001    SQLStatement = 'SELECT HTGUID, '                          +
+26001      'HTRQPGUID, '                                           +
+26001      'HTATTEMPTS, '                                          +
+26001      'HTRESSTS, '                                           +
+26001      'HTPNAME, '                                             +
+26001      'cast(' + tic + tic + ' as char(500)), '               +
+26001      'cast(HTRESTS as char(26)), '                          +
+26001      'cast(' + tic + tic + ' as char(10)), '                 +
+26001      'cast(' + tic + tic + ' as char(100)) '                 +
+26001    'From hbstrans '                                          +
+26001    'where HTTYPE = ' + tic + 'OUT' + tic +
+26001    ' and @W '                                                +
          'Order by '                                               +
-         '  s.hsrowmnt desc '                                      +
+         '  HTRESTS desc '                                        +
          'For Read Only';
 
          SQLStatement = %scanrpl('@W':WhereStatement:SQLStatement);
@@ -637,15 +643,7 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                attmps = $dsOutRec(index#).attmps;
                sndts   = $dsOutRec(index#).sndts;
                response = $dsOutRec(index#).response;
-               if $dsOutRec(index#).type = 'EXTERNAL';
-                 if $dsOUtRec(index#).sheader = 'INTERNAL';
-                   otype = 'I';
-                 else;
-                  otype = ' ';
-                 endif;
-               else;
-                 otype = 'H';
-               endif;
+26001          otype = ' ';
                Write sfld;
            EndFor;
          EndDo;
@@ -673,7 +671,7 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 25001  rdfr = %char(%date()-%days(3):*usa/);
        rtfr = %char(%time('00.00.00'):*HMS);
 
-26001  WhereStatement = 'HTRCVTS >= ' + tic +
+26001  WhereStatement = 'HTREQTS >= ' + tic +
         %char(
         %timestamp(%char(%date(rdfr:*usa):*ISO) +
         '-' + %char(%time(rtfr:*HMS):*ISO) +
@@ -880,19 +878,19 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 
           if frstat <> *blanks;
 26001       if WhereStatement = *blanks;
-26001         WhereStatement = 'HTRCVSTS = ' + tic +
+26001         WhereStatement = 'HTREQSTS = ' + tic +
                 frstat + tic;
 26001       else;
-26001         WhereStatement += ' AND HTRCVSTS = ' + tic +
+26001         WhereStatement += ' AND HTREQSTS = ' + tic +
                 frstat + tic;
 26001       endif;
           endif;
           if fsstat <> *blanks;
             if WhereStatement = *blanks;
-26001         WhereStatement = 'HTSNDSTS = ' + tic +
+26001         WhereStatement = 'HTRESSTS = ' + tic +
               fsstat + tic;
             else;
-26001         WhereStatement += ' AND HTSNDSTS = ' + tic +
+26001         WhereStatement += ' AND HTRESSTS = ' + tic +
               fsstat + tic;
             endif;
           endif;
@@ -909,13 +907,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
           endif;
           if rdfr <> *blanks;
             if WhereStatement = *blanks;
-26001         WhereStatement = 'HTRCVTS >= ' + tic +
+26001         WhereStatement = 'HTREQTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdfr:*usa):*ISO) +
                 '-' + %char(%time(rtfr:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-26001         WhereStatement += ' AND HTRCVTS >= ' + tic +
+26001         WhereStatement += ' AND HTREQTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdfr:*usa):*ISO) +
                 '-' + %char(%time(rtfr:*HMS):*ISO) +
@@ -925,13 +923,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 
           if rdto <> *blanks;
             if WhereStatement = *blanks;
-26001         WhereStatement = 'HTRCVTS <= ' + tic +
+26001         WhereStatement = 'HTREQTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdto:*usa):*ISO) +
                 '-' + %char(%time(rtto:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-26001         WhereStatement += ' AND HTRCVTS <= ' + tic +
+26001         WhereStatement += ' AND HTREQTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(rdto:*usa):*ISO) +
                 '-' + %char(%time(rtto:*HMS):*ISO) +
@@ -965,13 +963,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                  // Subfile Options
                  select;
 26001            when option2 = 'RD';
-                   ViewCLOB('HBSREQ': 'HRBODY': AGuid);
+                   ViewCLOB('HBSREQD': 'HRBODY': AGuid);
                  when %trim(option2) = 'V';
 26001              ShowDetail(AGuid);
                  when option2 = 'RH';
                    ViewCLOB('HBSTRANS': 'HTREQHDR': AGuid);
                  when option2 = 'SD';
-                   ViewClob('HBRESP': 'HSBODY': AGuid);
+                   ViewClob('HBSRESD': 'HSBODY': AGuid);
                  when option2 = 'SH';
                    ViewClob('HBSTRANS': 'HTRESHDR': AGuid);
                 //  when option2 = 'SR';
@@ -997,10 +995,10 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                    if gInd.ResetReq;
 26001                exec sql
 26001                  update hbstrans
-26001                    set htrcvsts = 'N', htsndsts = 'N'
+26001                    set htreqsts = 'N', htressts = 'N'
 26001                    where htguid = :AGuid;
 26001                exec sql
-26001                  delete from hbresp
+26001                  delete from hbsresd
 26001                    where hsguid = :AGuid;
                    endif;
                     build = *on;
@@ -1029,10 +1027,10 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 25001  sdfr = %char(%date()-%days(3):*usa/);
        stfr = %char(%time('00.00.00'):*HMS);
 
-       WhereStatement = 's.hsrowmnt >= ' + tic +
+26001  WhereStatement = 'HTREQTS >= ' + tic +
         %char(
-        %timestamp(%char(%date(rdfr:*usa):*ISO) +
-        '-' + %char(%time(rtfr:*HMS):*ISO) +
+        %timestamp(%char(%date(sdfr:*usa):*ISO) +
+        '-' + %char(%time(stfr:*HMS):*ISO) +
         '.000000')) + tic;
 
        Build_Out_List();
@@ -1186,42 +1184,42 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
            reset WhereStatement;
 
           if fpguid <> *blanks;
-            WhereStatement = 's.HSPARNTID = ' + tic +
+26001       WhereStatement = 'HTRQPGUID = ' + tic +
             fpguid + tic;
           endif;
 
           if faguid <> *blanks;
-              WhereStatement = 's.HSACTVTID = ' + tic +
+26001         WhereStatement = 'HTGUID = ' + tic +
               faguid + tic;
           endif;
 
           if fsstat <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 's.hsstat = ' + tic +
+26001         WhereStatement = 'HTRESSTS = ' + tic +
               fsstat + tic;
             else;
-              WhereStatement += ' AND s.hsstat = ' + tic +
+26001         WhereStatement += ' AND HTRESSTS = ' + tic +
               fsstat + tic;
             endif;
           endif;
           if fsservice <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 's.HSHSTSRV = ' + tic +
+26001         WhereStatement = 'HTPNAME = ' + tic +
                %trim(fsservice) + tic;
             else;
-              WhereStatement += ' AND s.HSHSTSRV = ' + tic +
+26001         WhereStatement += ' AND HTPNAME = ' + tic +
                %trim(fsservice) + tic;
             endif;
           endif;
           if sdfr <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 's.hsrowmnt >= ' + tic +
+26001         WhereStatement = 'HTRESTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(sdfr:*usa):*ISO) +
                 '-' + %char(%time(stfr:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-              WhereStatement += ' AND s.hsrowmnt >= ' + tic +
+26001         WhereStatement += ' AND HTRESTS >= ' + tic +
                 %char(
                 %timestamp(%char(%date(sdfr:*usa):*ISO) +
                 '-' + %char(%time(stfr:*HMS):*ISO) +
@@ -1231,13 +1229,13 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 
           if sdto <> *blanks;
             if WhereStatement = *blanks;
-              WhereStatement = 's.hsrowmnt <= ' + tic +
+26001         WhereStatement = 'HTRESTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(sdto:*usa):*ISO) +
                 '-' + %char(%time(stto:*HMS):*ISO) +
                 '.000000')) + tic;
             else;
-              WhereStatement += ' AND s.hsrowmnt <= ' + tic +
+26001         WhereStatement += ' AND HTRESTS <= ' + tic +
                 %char(
                 %timestamp(%char(%date(sdto:*usa):*ISO) +
                 '-' + %char(%time(stto:*HMS):*ISO) +
@@ -1263,12 +1261,12 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                dow not(%eof);
                  // Subfile Options
                  select;
-                 when option2 = 'SD';
-                   ViewClob('HBSSEND': 'HSSNDDTA': AGuid);
-                 when option2 = 'SH';
-                   ViewClob('HBSSEND': 'HSSNDHDR': AGuid);
-                 when option2 = 'SR';
-                   ViewClob('HBSSEND': 'HSRSPNSE': AGuid);
+26001            when option2 = 'SD';
+26001              ViewClob('HBSREQD': 'HRBODY': AGuid);
+26001            when option2 = 'SH';
+26001              ViewClob('HBSTRANS': 'HTREQHDR': AGuid);
+26001            when option2 = 'SR';
+26001              ViewClob('HBSRESD': 'HSBODY': AGuid);
                  when %trim(option2) = 'L';
                    ViewClob('HBSGUIDLOG': 'HGJSONLOG': AGuid);
                  when %trim(option2) = '2';
@@ -1277,10 +1275,10 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
                    outservice = SService;
                    oldstatus = SndStat;
                    exfmt SF04;
-                   exec sql
-                     update hbssend
-                       set hsstat = :newstatus
-                       where hsactvtid = :AGuid;
+26001                exec sql
+26001                  update hbstrans
+26001                    set htressts = :newstatus
+26001                    where htguid = :AGuid;
                     build = *on;
                  endsl;
 
@@ -1350,9 +1348,9 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 26001
 26001    exec sql
 26001      select HTRQAGUID, HTRQPGUID, HTTYPE,
-26001             HTRCVSTS, HTSNDSTS, HTATTEMPTS,
-26001             cast(HTRCVTS as char(26)),
-26001             cast(HTSNDTS as char(26)),
+26001             HTREQSTS, HTRESSTS, HTATTEMPTS,
+26001             cast(HTREQTS as char(26)),
+26001             cast(HTRESTS as char(26)),
 26001             HTSNAME, HTPNAME
 26001        into :dsSF06.aguid,  :dsSF06.pguid,  :dsSF06.type,
 26001             :dsSF06.rcvsts, :dsSF06.sndsts, :dsSF06.attmps,
@@ -1380,9 +1378,9 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 26001      endif;
 26001      select;
 26001        when %trim(d6opt) = 'RH';
-26001          ViewCLOB('HBSREQ'  : 'HRBODY'  : pGuid);
+26001          ViewCLOB('HBSREQD'  : 'HRBODY'  : pGuid);
 26001        when %trim(d6opt) = 'SH';
-26001          ViewCLOB('HBRESP'  : 'HSBODY'  : pGuid);
+26001          ViewCLOB('HBSRESD'  : 'HSBODY'  : pGuid);
 26001      endsl;
 26001      d6opt = *blanks;
 26001    enddo;

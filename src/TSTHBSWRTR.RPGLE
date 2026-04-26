@@ -152,7 +152,7 @@ hbstools_CommLog(660001: 'TSTHBSWRTR: Starting test with GUID=' + w_guid);
 //--------------------------------------------------------------
 exec sql
   insert into HBSTRANS
-    (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTRCVSTS, HTSNDSTS,
+    (HTGUID, HTRQPGUID, HTRQAGUID, HTTYPE, HTREQSTS, HTRESSTS,
      HTREQHDR, HTRESHDR)
   values (:w_guid,
           '00000000-0000-0000-0000-000000000000',
