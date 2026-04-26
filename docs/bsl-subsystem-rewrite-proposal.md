@@ -5,7 +5,7 @@
 This document proposes a comprehensive architectural change to the BSL Subsystem to improve performance, throughput, and operational flexibility. It consolidates several key initiatives into a single, unified project plan:
 
 1.  **Asynchronous Logging:** Offload all database logging writes to a separate, persistent writer job to eliminate I/O bottlenecks in the main transaction path.
-2.  **Database Schema Refactoring:** Normalize the existing `HBSRECV` and `HBSSEND` tables into a cleaner, more efficient structure (`HBSTRANS`, `HBSREQ`, `HBRESP`) to reduce data redundancy.
+2.  **Database Schema Refactoring:** Normalize the existing `HBSRECV` and `HBSSEND` tables into a cleaner, more efficient structure (`HBSTRANS`, `HBSREQD`, `HBSRESD`) to reduce data redundancy.
 3.  **Flexible Service Architecture:** Provide two distinct, configurable options for the host service program architecture, allowing a choice between maximum performance and operational agility.
 
 Communication between the main application programs and the new writer job will be handled via a high-speed **Data Queue**. This eliminates the overhead of submitting a new job for every transaction. Additionally, the proposal introduces a configuration file to enable or disable this logging on a per-service basis, providing granular control without requiring code changes.
@@ -17,7 +17,7 @@ This unified design represents the most scalable, maintainable, and robust solut
 The project will be implemented in two distinct phases to manage complexity and reduce risk.
 
 ### Phase 1: Database Refactoring (Synchronous) ✅ Code-Complete
-1.  **Create New Tables:** Define and create the new `HBSTRANS`, `HBSREQ`, and `HBRESP` tables. ✅
+1.  **Create New Tables:** Define and create the new `HBSTRANS`, `HBSREQD`, and `HBSRESD` tables. ✅
 2.  **Refactor Application:** Modify the application to write to the new tables synchronously. ✅ (`HBSHANDLR`, `HBSCHILD1`, `HBSWORK` all updated)
 3.  **Test & Deploy:** Validate and deploy the synchronous refactoring to establish a stable foundation.
 
@@ -51,34 +51,34 @@ Three distinct GUIDs are used per transaction:
 | `HBSTRANS.HTRQAGUID` | JSON `ActivityId` (`w_guid`) | Parsed from inbound request |
 | `HBSTRANS.HTRQPGUID` | JSON `ParentActivityId` (`w_pguid`) | Parsed from inbound request |
 
-`HTGUID` is the primary correlation key used throughout — it is the key in `HBSREQ`, and is stored as `HSTRGUID` in `HBRESP` to provide the back-link.
+`HTGUID` is the primary correlation key used throughout — it is the key in `HBSREQD`, and is stored as `HSGUID` in `HBSRESD` to provide the back-link.
 
-### 3.2. No Foreign Key Constraints on HBSREQ or HBRESP
+### 3.2. No Foreign Key Constraints on HBSREQD or HBSRESD
 
-`HBSREQ` and `HBRESP` do **not** have FK constraints back to `HBSTRANS`. This was an intentional design decision because:
+`HBSREQD` and `HBSRESD` do **not** have FK constraints back to `HBSTRANS`. This was an intentional design decision because:
 
-- `HBSCHILD1` inserts into `HBSTRANS` **and** `HBSREQ` together before putting the GUID on the receive data queue
-- `HBSHANDLR` inserts into `HBRESP` before `HBSCHILD1` reads the response
+- `HBSCHILD1` inserts into `HBSTRANS` **and** `HBSREQD` together before putting the GUID on the receive data queue
+- `HBSHANDLR` inserts into `HBSRESD` before `HBSCHILD1` reads the response
 - The strict write ordering makes FKs unenforceable without deferral
 
-In Phase 2, when `HBSWRITER` takes over the inserts asynchronously, this ordering constraint must still be respected — the `HBSTRANS` row must exist before `HBSWRITER` attempts to insert the `HBSREQ` CLOB data.
+In Phase 2, when `HBSWRITER` takes over the inserts asynchronously, this ordering constraint must still be respected — the `HBSTRANS` row must exist before `HBSWRITER` attempts to insert the `HBSREQD` CLOB data.
 
 ### 3.3. Two-Phase HBSTRANS Write Pattern
 
 `HBSTRANS` is written in two steps by two different programs:
 
-1.  **`HBSCHILD1.WriteRecv`** — inserts the row with `HTGUID`, `HTRQAGUID`, `HTRQPGUID`, `HTTYPE`, `HTRCVSTS`, `HTSNDSTS`. Service name (`HTSNAME`) and program name (`HTPNAME`) are left as empty defaults.
-2.  **`HBSHANDLR.WrtTrans`** — updates the existing row (`UPDATE ... WHERE HTGUID = r_pguid`) to fill in `HTSNAME`, `HTPNAME`, and set `HTSNDSTS`.
+1.  **`HBSCHILD1.WriteRecv`** — inserts the row with `HTGUID`, `HTRQAGUID`, `HTRQPGUID`, `HTTYPE`, `HTREQSTS`, `HTRESSTS`. Service name (`HTSNAME`) and program name (`HTPNAME`) are left as empty defaults.
+2.  **`HBSHANDLR.WrtTrans`** — updates the existing row (`UPDATE ... WHERE HTGUID = r_pguid`) to fill in `HTSNAME`, `HTPNAME`, and set `HTRESSTS`.
 
 In Phase 2, `HBSWRITER` will take over step 1 for the CLOB body write, but the two-step ownership pattern should be preserved.
 
-### 3.4. HBRESP Key Design (HSGUID = HTGUID)
+### 3.4. HBSRESD Key Design (HSGUID = HTGUID)
 
-`HBRESP` uses `HSGUID CHAR(36)` as its primary key, and this value **is the same as `HTGUID`** — the locally generated `w_guid2` from `HBSCHILD1.WriteRecv`. This means no separate back-link column is needed.
+`HBSRESD` uses `HSGUID CHAR(36)` as its primary key, and this value **is the same as `HTGUID`** — the locally generated `w_guid2` from `HBSCHILD1.WriteRecv`. This means no separate back-link column is needed.
 
-- `HBSHANDLR.WrtSend` inserts into `HBRESP` using `wReqData.r_pguid` (= `HTGUID`) as `HSGUID`
-- `HBSCHILD1.ReadSQL` queries `HBRESP WHERE HSGUID = :w_guid` using `w_guid2` directly
-- `HBSCHILD1.UpdtStat` updates `HBSTRANS SET HTSNDSTS WHERE HTGUID = :w_guid2` using the same key
+- `HBSHANDLR.WrtSend` inserts into `HBSRESD` using `wReqData.r_pguid` (= `HTGUID`) as `HSGUID`
+- `HBSCHILD1.ReadSQL` queries `HBSRESD WHERE HSGUID = :w_guid` using `w_guid2` directly
+- `HBSCHILD1.UpdtStat` updates `HBSTRANS SET HTRESSTS WHERE HTGUID = :w_guid2` using the same key
 
 The single GUID value serves as the correlation key through the entire chain — no intermediary `r_trguid` field or back-link column is required.
 
@@ -86,15 +86,15 @@ The single GUID value serves as the correlation key through the entire chain —
 
 | File | Type | Changes |
 |---|---|---|
-| `HBSTRANS.SQL` | DDL | New table; `HTSNAME`/`HTPNAME` are `NOT NULL WITH DEFAULT ''` |
-| `HBSREQ.SQL` | DDL | New table; no FK |
-| `HBRESP.SQL` | DDL | New table; no FK; includes `HSTRGUID` |
-| `HBSHANDLR.SQLRPGLE` | Program | `WrtTrans` → UPDATE; `WrtSend` → `INSERT INTO HBRESP`; `UpdtStat` → `UPDATE HBSTRANS`; all `hbstools_Actvty` → `hbstools_CrtLog` (ssp22); `LoadPath` cursor → `hbhsts` (ssp20); `GetWorkData` calls use `likeds(dsVersion)` (ssp21); globals `gCrtLogEvent`/`gAppErrLog`/`gVersionActive`/`gRunAsTest` added (ssp21); `CallSrvc` sets `RtnOpts` positions 1-2 from globals (ssp21) |
-| `HBSWORK.SQLRPGLE` | Program | `GetRQWorkData`/`GetMNWorkData` → `HBSREQ JOIN HBSTRANS`; `GetSRWorkData` → `HBRESP JOIN HBSTRANS`; all proc signatures changed to `likeds(dsVersion)` (ssp21); `SrvcLst` replaced by `dsVersion extname('HBSVERSNV1')` + `ServiceList` array (ssp21); `LoadSrvcs` cursor → `select * from HBSVERSN` (ssp21); `GetHostSrvc` returns full version row (ssp21) |
-| `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQ`; `ReadSQL` → `HBRESP`; `UpdtStat` uses `r_trguid`; `GetReqFiNum` proc restored; SQL Set Option block added |
+| `HBSTRANS.SQL` | DDL | New table; `HTSNAME`/`HTPNAME` are `NOT NULL WITH DEFAULT ''`; columns `HTREQTS`/`HTRESTS`/`HTREQSTS`/`HTRESSTS` |
+| `HBSREQD.SQL` | DDL | New table (renamed from `HBSREQ`); no FK; `CLOB(16M) ALLOCATE(4096)` |
+| `HBSRESD.SQL` | DDL | New table (renamed from `HBRESP`); no FK; `CLOB(16M) ALLOCATE(16384)` |
+| `HBSHANDLR.SQLRPGLE` | Program | `WrtTrans` → UPDATE; `WrtSend` → `INSERT INTO HBSRESD`; `UpdtStat` → `UPDATE HBSTRANS SET HTRESSTS`; all `hbstools_Actvty` → `hbstools_CrtLog` (ssp22); `LoadPath` cursor → `hbhsts` (ssp20); `GetWorkData` calls use `likeds(dsVersion)` (ssp21); globals `gCrtLogEvent`/`gAppErrLog`/`gVersionActive`/`gRunAsTest` added (ssp21); `CallSrvc` sets `RtnOpts` positions 1-2 from globals (ssp21) |
+| `HBSWORK.SQLRPGLE` | Program | `GetRQWorkData`/`GetMNWorkData` → `HBSREQD JOIN HBSTRANS WHERE HTREQSTS='N'`; `GetSRWorkData` → `HBSRESD JOIN HBSTRANS`; all proc signatures changed to `likeds(dsVersion)` (ssp21); `SrvcLst` replaced by `dsVersion extname('HBSVERSNV1')` + `ServiceList` array (ssp21); `LoadSrvcs` cursor → `select * from HBSVERSN` (ssp21); `GetHostSrvc` returns full version row (ssp21) |
+| `HBSCHILD1.SQLRPGLE` | Program | `WriteRecv`/`WriteEndr` → `HBSTRANS`+`HBSREQD`; `ReadSQL` → `HBSRESD`; `UpdtStat` sets `HTRESSTS`; `UpdtStatR` sets `HTREQSTS`; `GetReqFiNum` proc restored; SQL Set Option block added |
 | `HBSHS003.SQLRPGLE` | Program | Copied from member; updated to `inPtr`/`outPtr` pattern |
 
-> **Phase 2 Prerequisite — HBSWRITER:** `HBSWRITER.RPGLE` still contains a live `INSERT INTO HBSSEND` at approximately line 156. This must be rewritten to use `HBRESP` before Phase 2 work begins, as `HBSSEND` no longer exists in the new table structure.
+> **Phase 2 Prerequisite — HBSWRITER:** `HBSWRITER.RPGLE` has been updated to use `HBSREQD` and `HBSRESD` (formerly `HBSREQ`/`HBRESP`, previously `HBSRECV`/`HBSSEND`). ✅
 
 ---
 
@@ -223,9 +223,9 @@ A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 
     *   **Recommended approach.** Job log for real-time trace-level output; dedicated table for anything that needs to survive the job and be queried after the fact. The two are complementary. Error-level messages remain in `CommLog` unconditionally regardless of the debug flag.
 
-*   **Possible Future: Selective Request/Response Storage per Service.** Currently every transaction writes both a request (`HBSREQ`) and response (`HBRESP`) row unconditionally. For high-volume services where the response is only useful for diagnosis, storing successful responses is unnecessary overhead. Two new flags on `HBSVERSN` (surfaced through `HBSVERSNV1` and the existing `dsVersion` DS already returned by `HBSWORK.GetWorkData`) would control this per service:
+*   **Possible Future: Selective Request/Response Storage per Service.** Currently every transaction writes both a request (`HBSREQD`) and response (`HBSRESD`) row unconditionally. For high-volume services where the response is only useful for diagnosis, storing successful responses is unnecessary overhead. Two new flags on `HBSVERSN` (surfaced through `HBSVERSNV1` and the existing `dsVersion` DS already returned by `HBSWORK.GetWorkData`) would control this per service:
 
-    *   `LogReqData char(1)` — `'Y'` = always write request body to `HBSREQ`; `'N'` = skip.
+    *   `LogReqData char(1)` — `'Y'` = always write request body to `HBSREQD`; `'N'` = skip.
     *   `LogRespData char(1)` — `'Y'` = always write; `'E'` = errors only (i.e., `Success = *off` or `ResponseDetailCollection` contains error codes); `'N'` = never write.
 
     **Decision point is `HBSHANDLR`**, not `HBSWRITER`. Since `HBSHANDLR` constructs the response and already knows the success/error outcome before calling `WrtSend`, it can simply skip creating the User Space and sending the DQ message when storage is not required — nothing reaches `HBSWRITER` at all for suppressed records. This keeps `HBSWRITER` simple and stateless. The `LogReqData`/`LogRespData` values are already available in `gCrtLogEvent`/`gAppErrLog` style globals once `GetWorkData` returns, requiring no additional queries.
@@ -240,7 +240,7 @@ A key concern is preventing orphaned objects (`*USRSPC`) from accumulating.
 
 ### 7.2. Existing Functionality: Query Number Resolved at Display Time in `HBSDB`
 
-The current implementation resolves the query number **at display time** inside `HBSDB.Build_In_List`. When `service = 'NTQuery'` is detected for a row, the code performs an additional `SELECT HRBODY FROM HBSREQ WHERE HRGUID = :aguid`, parses the returned JSON CLOB via `data-into YAJLINTO`, and builds the enriched service name:
+The current implementation resolves the query number **at display time** inside `HBSDB.Build_In_List`. When `service = 'NTQuery'` is detected for a row, the code performs an additional `SELECT HRBODY FROM HBSREQD WHERE HRGUID = :aguid`, parses the returned JSON CLOB via `data-into YAJLINTO`, and builds the enriched service name:
 
 ```rpgle
 service = 'NTQuery' + NTQuery.HeaderInfo.QueryNum;
@@ -1239,4 +1239,86 @@ endif;
 | `P2 = 0;` initialization | Remove if loop is removed |
 | `D p2 s 4 0` declaration | Remove if no other references found |
 
+---
+
+## 10. Schema Rename and CLOB Optimization (April 2026)
+
+### 10.1. Table and Column Renames
+
+As part of the BSL subsystem rewrite, all table and column names were updated to use consistent REQ/RES terminology, replacing the legacy RCV/SND model. The old names were tied to the HBSRECV/HBSSEND architecture; the new names reflect the unified HBSTRANS (IN/OUT) model.
+
+#### HBSTRANS Column Renames
+
+| Old Name | New Name | Description |
+|----------|----------|-------------|
+| `HTRCVTS` | `HTREQTS` | Timestamp when the request was received/created |
+| `HTRCVSTS` | `HTREQSTS` | Status of the inbound request |
+| `HTSNDTS` | `HTRESTS` | Timestamp when the response was sent/received |
+| `HTSNDSTS` | `HTRESSTS` | Status of the outbound response |
+
+#### CLOB Table Renames
+
+| Old Table | New Table | Key Column | Description |
+|-----------|-----------|------------|-------------|
+| `HBSREQ` | `HBSREQD` | `HRGUID` → `HTGUID` | Request body (CLOB) |
+| `HBRESP` | `HBSRESD` | `HSGUID` → `HTGUID` | Response body (CLOB) |
+
+All affected programs were updated: `HBSDB`, `HBSPUSH`, `HBSCHILD1`, `HBSCMEVT`, `HBSHANDLR`, `HBSWORK`, `HBSWRITER`, `TSTHBSWRTR`. See `docs/schema-rename-req-resp.md` for the per-file change inventory.
+
+### 10.2. CLOB Field Consolidation
+
+The legacy model used five CLOB fields across two tables:
+
+| Table | CLOB Fields | Max Size Each | Total per Row |
+|-------|-------------|---------------|---------------|
+| `HBSRECV` | 2 | 25M | 50M |
+| `HBSSEND` | 3 | 25M | 75M |
+| **Old total** | **5** | | **125M** |
+
+The new model uses one CLOB per table:
+
+| Table | CLOB Field | Max Size | ALLOCATE |
+|-------|------------|----------|----------|
+| `HBSREQD` | `HRBODY` | 16M | 4,096 |
+| `HBSRESD` | `HSBODY` | 16M | 16,384 |
+| **New total** | **2** | | |
+
+Beyond field count, the separation of request and response into distinct tables eliminates lock contention (response writes no longer touch the request row) and allows independent retention policies.
+
+### 10.3. CLOB ALLOCATE Sizing — Production Data Analysis
+
+The `ALLOCATE` clause controls how much of the CLOB is stored **inline** in the row versus spilling to auxiliary LOB storage. Without it, DB2 for i defaults to `ALLOCATE(0)`, meaning every read — regardless of payload size — requires a separate auxiliary I/O. The values were chosen based on production data:
+
+#### HBSRESD (Response bodies)
+
+| Size Range | Row Count | Cumulative % |
+|------------|-----------|-------------|
+| 0–4K | 401,551 | 18.6% |
+| 4K–8K | 924,310 | 61.5% |
+| 8K–16K | 822,665 | 99.6% |
+| 16K–32K | 6,075 | 99.9% |
+| Over 32K | 1,706 | 100% |
+
+**Conclusion:** `ALLOCATE(16384)` — 99.6% of response payloads fit inline with no auxiliary I/O.
+
+#### HBSREQD (Request bodies — inbound)
+
+| Size Range | Row Count | Cumulative % |
+|------------|-----------|-------------|
+| 0–4K | 997,367 | 100% |
+
+**Conclusion:** `ALLOCATE(4096)` — 100% of inbound request payloads fit inline.
+
+#### HBSREQD (Request bodies — outbound)
+
+| Size Range | Row Count | Cumulative % |
+|------------|-----------|-------------|
+| 0–4K | 251,996 | ~100% |
+| 4K–8K | 1 | 100% |
+
+**Conclusion:** `ALLOCATE(4096)` covers both IN and OUT request traffic. The single outlier spills gracefully to auxiliary storage.
+
+### 10.4. Performance Impact
+
+The ALLOCATE change eliminates auxiliary LOB object I/O for essentially all real-world payloads. The most visible impact is in `HBSDB` (dashboard subfile loads, which page through many rows) and `HBSPUSH` (outbound batch processing). Single-request paths (`HBSHANDLR`, `HBSWORK`) each save one auxiliary I/O per transaction, which becomes significant at high concurrency.
 
