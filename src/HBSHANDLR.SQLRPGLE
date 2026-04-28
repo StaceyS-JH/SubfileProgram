@@ -277,7 +277,7 @@ dow end = *off;
         ReqCtx.RecvPtr = %addr(RecvDta);
         ReqCtx.RcvGuid = q_RcvGUID;
         ReqCtx.SndDtaq = q_SndDtaq;
-        hbstools_CrtLog(r_aguid
+        hbstools_CrtLog(r_pguid
                     :'GUIDLOG':''
                     :'550025':''
                     :Procname:psjobnm
@@ -379,7 +379,7 @@ if q_SndDtaq <> *blanks;
         ReqCtx.RecvPtr = %addr(RecvDta);
         ReqCtx.RcvGuid = q_RcvGUID;
         ReqCtx.SndDtaq = q_SndDtaq;
-        hbstools_CrtLog(r_aguid
+        hbstools_CrtLog(ReqCtx.RcvGuid
                     :'GUIDLOG':''
                     :'560000':' Work Type ' + %trim(q_SndDtaq) + ' found'
                     :Procname:psjobnm
@@ -418,7 +418,7 @@ else;
     ReqCtx.RecvPtr = %addr(RecvDta);
     ReqCtx.RcvGuid = q_RcvGUID;
     ReqCtx.SndDtaq = q_SndDtaq;
-    hbstools_CrtLog(r_aguid
+    hbstools_CrtLog(ReqCtx.RcvGuid
                     :'GUIDLOG':''
                     :'550025':''
                     :Procname:psjobnm
@@ -495,7 +495,7 @@ monitor;
     if %subst(wReqCtx.RtnOpts:40:1) <> 'N';
     WrtSend(pReqCtx:wReqCtx.HostProgram:pOutPtr:gAttempt);
     endif;
-    hbstools_CrtLog(r_aguid
+    hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :'550034':''
                 :Procname:psjobnm
@@ -645,7 +645,7 @@ dcl-ds wErrBody qualified;
     Success ind;
 end-ds;
 
-hbstools_CrtLog(wReqData.r_aguid
+hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :%char(pErrNum):''
                 :Procname:psjobnm
@@ -742,14 +742,14 @@ exec sql
     where HTGUID = :wReqData.r_pguid;
 
 if sqlstate <> '00000';
-    hbstools_CrtLog(wReqData.r_aguid
+    hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :'550032':''
                 :Procname:psjobnm
                 :%char(psjob#):'Y');
 endif;
 
-hbstools_CrtLog(wReqData.r_aguid
+hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :'550033':''
                 :Procname:psjobnm
@@ -960,7 +960,7 @@ if SQLstate = '00000';
     wStatUpd = 'X';
     endif;
 
-    hbstools_CrtLog(wActvtGUID
+    hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :'550027':''
                 :Procname:psjobnm
@@ -968,7 +968,7 @@ if SQLstate = '00000';
 
     UpdtStat(wStatUpd);
 else;
-    hbstools_CrtLog(wActvtGUID
+    hbstools_CrtLog(wReqData.r_pguid
                 :'GUIDLOG':''
                 :'550027':''
                 :Procname:psjobnm

@@ -1322,3 +1322,125 @@ The `ALLOCATE` clause controls how much of the CLOB is stored **inline** in the 
 
 The ALLOCATE change eliminates auxiliary LOB object I/O for essentially all real-world payloads. The most visible impact is in `HBSDB` (dashboard subfile loads, which page through many rows) and `HBSPUSH` (outbound batch processing). Single-request paths (`HBSHANDLR`, `HBSWORK`) each save one auxiliary I/O per transaction, which becomes significant at high concurrency.
 
+---
+
+## 11. HBSPUSH Parameter Handling Cleanup (Deferred — Low Priority)
+
+`HBSPUSH` works correctly as-is. This section documents a cleanup opportunity identified during a code review in April 2026. The code has unnecessary duplication and intermediate structures that were recognized as awkward at the time of original authoring. Address when time permits.
+
+### 11.1. The Problem: Two Parallel Structures for the Same Data
+
+`LoadPushParameters` currently uses two separate data structures to hold server configuration:
+
+- **`dsHbspars`** — the `data-into` target, with field names that exactly match the JSON keys (`Server_Type`, `ConnectionTimeout`, `UsePersistentConnection`, etc.)
+- **`S_Info` / `Servers`** — the runtime working array, with abbreviated field names (`sType`, `ConnectionTO`, `UsePersist`, etc.)
+
+The entire body of the outer `for idx1` loop in `LoadPushParameters` exists solely to copy fields from one structure to the other. This is the source of the bug where six fields were assigned twice (the second block overwrites the first with identical values).
+
+Additionally, `myServer` is a module-level `likeds(S_Info)` that is populated in `NextServerIP` with `myServer = Servers(idx1)` and then used in `ConnectTo` and the main processing loop. It is a snapshot copy — not a reference — so updating `Servers(idx1).CurIPNum` in `NextServerIP` after the copy does not affect `myServer.CurIPNum`.
+
+### 11.2. The Fix: Consolidate into a Single Structure
+
+**Step 1 — Replace `dsHbspars` + `S_Info` with a single `dsConfig`:**
+
+Rename `S_Info` fields to match JSON keys and nest the IP list inside the server element. Add the three runtime-only fields (`CurIPNum`, `MultiIP`, and `IPCount` aliased as `num_Server_IP_List` via `countprefix=`) that `data-into` will skip over since they are not in the JSON.
+
+```rpgle
+dcl-ds dsConfig qualified;
+  num_Servers             int(10)      inz(0);
+  dcl-ds Servers dim(10);
+    Server_Type             char(3)      inz('');
+    ConnectionTimeout       int(10)      inz(0);
+    SocketTimeout           int(10)      inz(0);
+    PushIdleTimeout         int(10)      inz(0);
+    PersistentLoopWaitTime  int(10)      inz(0);
+    UsePersistentConnection ind          inz(*off);
+    MaxAttempts             int(10)      inz(0);
+    RetryDelay              packed(5:2)  inz(0);
+    MaxConnectionAttempts   int(10)      inz(0);
+    ConnectionRetryDelay    packed(5:2)  inz(0);
+    UserAgent               varchar(100) inz('');
+    ContentType             varchar(100) inz('');
+    // Runtime fields — not in JSON, ignored by data-into (allowmissing=yes)
+    CurIPNum                int(10)      inz(0);
+    MultiIP                 ind          inz(*off);
+    // Nested IP list
+    num_Server_IP_List      int(10)      inz(0);
+    dcl-ds Server_IP_List dim(5);
+      Name       varchar(25) inz('');
+      IP         varchar(25) inz('');
+      Port       int(10)     inz(0);
+      Encryption ind         inz(*off);
+    end-ds;
+  end-ds;
+  DebugHttp     ind          inz(*off);
+  DebugFilePath varchar(200) inz('');
+end-ds;
+```
+
+The JSON array key must also be renamed from `Server_List` to `Servers` to match. Update the stored `HBSPARS` record for each bank at the same time.
+
+**Step 2 — Load directly into `dsConfig.Servers`:**
+
+`dsHbspars` disappears. The `data-into` target becomes `dsConfig`:
+
+```rpgle
+data-into dsConfig %DATA(myClob
+              : 'doc=string case=convert countprefix=num_ -
+              allowextra=yes allowmissing=yes trim=none')
+              %PARSER('YAJLINTO');
+```
+
+**Step 3 — Collapse `LoadPushParameters` inner loop:**
+
+The entire field copy block is replaced with three lines:
+
+```rpgle
+for idx1 = 1 to dsConfig.num_Servers;
+  dsConfig.Servers(idx1).CurIPNum = 1;
+  dsConfig.Servers(idx1).MultiIP =
+    (dsConfig.Servers(idx1).num_Server_IP_List > 1);
+
+  for idx2 = 1 to dsConfig.Servers(idx1).num_Server_IP_List;
+    Server_Ips(idxIP).Type   = dsConfig.Servers(idx1).Server_Type;
+    Server_Ips(idxIP).Search = %trim(dsConfig.Servers(idx1).Server_Type)
+                             + %char(idx2);
+    Server_Ips(idxIP).Name   = dsConfig.Servers(idx1).Server_IP_List(idx2).Name;
+
+    if dsConfig.Servers(idx1).Server_IP_List(idx2).Encryption;
+      Server_Ips(idxIP).URL = 'https://'
+        + %trim(dsConfig.Servers(idx1).Server_IP_List(idx2).IP)
+        + ':' + %char(dsConfig.Servers(idx1).Server_IP_List(idx2).Port);
+    else;
+      Server_Ips(idxIP).URL = 'http://'
+        + %trim(dsConfig.Servers(idx1).Server_IP_List(idx2).IP)
+        + ':' + %char(dsConfig.Servers(idx1).Server_IP_List(idx2).Port);
+    endif;
+
+    idxIP += 1;
+  endfor;
+endfor;
+```
+
+**Step 4 — Replace `myServer` with a server index:**
+
+Add a module-level `dcl-s srvIdx int(10) inz(0)`. In `NextServerIP`, replace `myServer = Servers(idx1)` with `srvIdx = idx1`. Every `myServer.xxx` reference in `ConnectTo` and the main processing loop becomes `dsConfig.Servers(srvIdx).xxx`. The `myServer` DS and the `S_Info` template are removed.
+
+**Step 5 — Update `PushControl` reference:**
+
+`PushControl` references `dsHbsPars.DebugFilePath` for toggling HTTP debug. Change to `dsConfig.DebugFilePath`.
+
+### 11.3. Bug Fixes Included
+
+- **Duplicate field assignments:** The second block assigning `ConnectionTO`, `SocketTO`, `PushITO`, `UserAgent`, `ContType` in the original `for idx1` loop is removed entirely along with the rest of the copy loop.
+- **`RetryDelay` precision inconsistency:** `dsHbspars` declared it `packed(5:2)` while `S_Info` used `packed(15:5)`. The consolidated DS uses `packed(5:2)` — sufficient for values like `0.25`.
+- **`App` field:** Already unused (mutual TLS was never implemented). Remove from `dsHbspars.Server_IP_List` — `allowextra=yes` in existing `data-into` calls will silently skip it in any stored JSON that still contains the field.
+
+### 11.4. JSON Change Required
+
+The `Server_List` array key in the stored `HBSPARS` records must be renamed to `Servers` to match the new DS. This is a one-time update to each bank's parameter record. The change is not backward-compatible — the old `dsHbspars` and the new `dsConfig` cannot coexist during a partial rollout.
+
+### 11.5. Scope
+
+Only `HBSPUSH.SQLRPGLE` is affected. No schema changes, no other programs, no copybooks.
+
