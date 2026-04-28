@@ -282,7 +282,7 @@
      A          R SFLD                      SFL
      A*%%TS  SD  20231228  223548  STACEYS     REL-V7R5M0  5770-WDS
      A            OPTION2        2A  I  8  3VALUES('  ' 'SD' 'SH' 'SR' ' L' 'L -
-     A                                      ' '2 ' ' 2')
+     A                                      ' '2 ' ' 2' 'V ' ' V')
      A            AGUID         36A  O  8  8
      A            RESPONSE      75A  O  9 52
      A            SSERVICE      10A  O  8 45
@@ -358,6 +358,8 @@
      A                                      DSPATR(HI)
      A                                      DSPATR(UL)
      A                                  5  3'2=Update'
+     A                                      COLOR(BLU)
+     A                                  5 14'V=View Detail'
      A                                      COLOR(BLU)
      A**
      A          R SFLDF

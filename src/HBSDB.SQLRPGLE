@@ -1269,6 +1269,8 @@ sasx           sndstat = $dsOutRec(index#).sndstat;
 26001              ViewClob('HBSRESD': 'HSBODY': AGuid);
                  when %trim(option2) = 'L';
                    ViewClob('HBSGUIDLOG': 'HGJSONLOG': AGuid);
+                 when %trim(option2) = 'V';
+26001              ShowDetail(AGuid);
                  when %trim(option2) = '2';
                    outpguid = PGuid;
                    outaguid = AGuid;
